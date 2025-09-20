@@ -67,6 +67,7 @@ type RedditPost struct {
 	Score       int
 	NumComments int
 	CreatedAt   time.Time
+	Content     string
 }
 
 type RedditComment struct {
@@ -111,6 +112,7 @@ type AssessmentItem struct {
 	Type           string   `json:"type"` // "post" | "comment"
 	Subreddit      string   `json:"subreddit"`
 	Permalink      string   `json:"permalink"`
+	Title          string   `json:"title"`
 	Content        string   `json:"content"`         // post title/body or comment body
 	Indicators     []string `json:"indicators"`      // short bullet-style phrases
 	RelevanceScore float64  `json:"relevance_score"` // 0..10
@@ -190,6 +192,13 @@ func GetRedditUserPosts(ctx context.Context, username string, postLimit, comment
 	}
 	for _, ch := range posts.Data.Children {
 		d := ch.Data
+
+		// Build a readable content string
+		postContent := d.Title
+		if s := strings.TrimSpace(d.SelfText); s != "" {
+			postContent = d.Title + "\n\n" + s
+		}
+
 		content.Posts = append(content.Posts, RedditPost{
 			Subreddit:   d.Subreddit,
 			Title:       d.Title,
@@ -198,6 +207,7 @@ func GetRedditUserPosts(ctx context.Context, username string, postLimit, comment
 			Score:       d.Score,
 			NumComments: d.NumComments,
 			CreatedAt:   time.Unix(int64(d.CreatedUTC), 0).UTC(),
+			Content:     postContent, // ← NEW
 		})
 	}
 
@@ -293,7 +303,7 @@ func SendContentToClaude(ctx context.Context, content *CommentsAndPosts) (*Parse
 
 	payload := ClaudeRequest{
 		Model:     model,
-		MaxTokens: 1024,
+		MaxTokens: 4096,
 		System: `You are a mental health analyst. Return ONLY strict JSON with this schema:
 {
   "executive_summary": string,
@@ -303,6 +313,7 @@ func SendContentToClaude(ctx context.Context, content *CommentsAndPosts) (*Parse
       "type": "post"|"comment",
       "subreddit": string,
       "permalink": string,
+	  "title": string,
       "content": string,
       "indicators": [string],
       "relevance_score": number // 0..10
@@ -329,7 +340,7 @@ Limit to at most 5 items and include permalinks. No additional prose.`,
 	req.Header.Set("x-api-key", apiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
 
-	client := &http.Client{Timeout: 20 * time.Second}
+	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
