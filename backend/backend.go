@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -16,8 +15,6 @@ import (
 
 var httpClient = &http.Client{Timeout: 60 * time.Second}
 
-// ----- Raw Reddit API structs -----
-
 type RedditAbout struct {
 	Data struct {
 		Name       string  `json:"name"`
@@ -25,7 +22,7 @@ type RedditAbout struct {
 		TotalKarma int     `json:"total_karma"`
 		CreatedUTC float64 `json:"created_utc"`
 		Subreddit  struct {
-			PublicDescription string `json:"public_description"`
+			PublicDescription string `json:"public_description"` // bio
 		} `json:"subreddit"`
 	} `json:"data"`
 }
@@ -35,24 +32,19 @@ type Listing struct {
 		Children []struct {
 			Kind string `json:"kind"`
 			Data struct {
-				Subreddit   string   `json:"subreddit"`
-				Title       string   `json:"title"`
-				SelfText    string   `json:"selftext"`
-				Body        string   `json:"body"`
-				Permalink   string   `json:"permalink"`
-				URL         string   `json:"url"`
-				Score       int      `json:"score"`
-				NumComments int      `json:"num_comments"`
-				CreatedUTC  float64  `json:"created_utc"`
-				UpvoteRatio *float64 `json:"upvote_ratio,omitempty"`
-				Ups         *int     `json:"ups,omitempty"`
-				Downs       *int     `json:"downs,omitempty"`
+				Subreddit   string  `json:"subreddit"`
+				Title       string  `json:"title"`    // posts
+				SelfText    string  `json:"selftext"` // posts text
+				Body        string  `json:"body"`     // comments
+				Permalink   string  `json:"permalink"`
+				URL         string  `json:"url"`
+				Score       int     `json:"score"`
+				NumComments int     `json:"num_comments"`
+				CreatedUTC  float64 `json:"created_utc"`
 			} `json:"data"`
 		} `json:"children"`
 	} `json:"data"`
 }
-
-// ----- Internal types -----
 
 type ProfileInformation struct {
 	Username   string
@@ -75,8 +67,6 @@ type RedditPost struct {
 	Score       int
 	NumComments int
 	CreatedAt   time.Time
-	Upvotes     *int
-	Downvotes   *int
 }
 
 type RedditComment struct {
@@ -85,24 +75,45 @@ type RedditComment struct {
 	Permalink string
 	Score     int
 	CreatedAt time.Time
-	Upvotes   *int
-	Downvotes *int
 }
 
-// What we send to Claude
+// ClaudeInput is what we send to Claude (only posts + comments)
 type ClaudeInput struct {
 	Posts    []RedditPost    `json:"posts"`
 	Comments []RedditComment `json:"comments"`
 }
 
-// Parsed assessment
+type TextBlock struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+type ClaudeMessage struct {
+	Role    string        `json:"role"`
+	Content []interface{} `json:"content"`
+}
+
+type ClaudeRequest struct {
+	Model     string          `json:"model"`
+	MaxTokens int             `json:"max_tokens"`
+	System    string          `json:"system"`
+	Messages  []ClaudeMessage `json:"messages"`
+}
+
+type ClaudeResponse struct {
+	Content []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"content"`
+}
+
 type AssessmentItem struct {
-	Type           string   `json:"type"`
+	Type           string   `json:"type"` // "post" | "comment"
 	Subreddit      string   `json:"subreddit"`
 	Permalink      string   `json:"permalink"`
-	Content        string   `json:"content"`
-	Indicators     []string `json:"indicators"`
-	RelevanceScore float64  `json:"relevance_score"`
+	Content        string   `json:"content"`         // post title/body or comment body
+	Indicators     []string `json:"indicators"`      // short bullet-style phrases
+	RelevanceScore float64  `json:"relevance_score"` // 0..10
 }
 
 type ParsedAssessment struct {
@@ -111,15 +122,15 @@ type ParsedAssessment struct {
 	Items            []AssessmentItem `json:"items"`
 }
 
-// ----- Scraper -----
-
 func doGET(ctx context.Context, url string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; GoRedditProfile/1.0)")
+	// IMPORTANT: Set a descriptive UA as Reddit requests
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; GoRedditProfile/1.0; +https://example.com)")
 
+	// Simple 429 handling (Retry-After)
 	for attempt := 0; attempt < 3; attempt++ {
 		resp, err := httpClient.Do(req)
 		if err != nil {
@@ -146,9 +157,84 @@ func drainAndClose(rc io.ReadCloser) error {
 	return rc.Close()
 }
 
+func GetRedditUserPosts(ctx context.Context, username string, postLimit, commentLimit int) (*CommentsAndPosts, error) {
+	if postLimit <= 0 {
+		postLimit = 10
+	}
+	if commentLimit <= 0 {
+		commentLimit = 10
+	}
+
+	base := "https://www.reddit.com"
+	submittedURL := fmt.Sprintf("%s/user/%s/submitted.json?limit=%d", base, username, postLimit)
+	commentsURL := fmt.Sprintf("%s/user/%s/comments.json?limit=%d", base, username, commentLimit)
+
+	content := &CommentsAndPosts{
+		Posts:    []RedditPost{},
+		Comments: []RedditComment{},
+	}
+
+	// Posts
+	resp, err := doGET(ctx, submittedURL)
+	if err != nil {
+		return content, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return content, fmt.Errorf("submitted.json: %s - %s", resp.Status, string(body))
+	}
+	var posts Listing
+	if err := json.NewDecoder(resp.Body).Decode(&posts); err != nil {
+		return content, err
+	}
+	for _, ch := range posts.Data.Children {
+		d := ch.Data
+		content.Posts = append(content.Posts, RedditPost{
+			Subreddit:   d.Subreddit,
+			Title:       d.Title,
+			URL:         d.URL,
+			Permalink:   "https://www.reddit.com" + d.Permalink,
+			Score:       d.Score,
+			NumComments: d.NumComments,
+			CreatedAt:   time.Unix(int64(d.CreatedUTC), 0).UTC(),
+		})
+	}
+
+	// Comments
+	resp, err = doGET(ctx, commentsURL)
+	if err != nil {
+		return content, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return content, fmt.Errorf("comments.json: %s - %s", resp.Status, string(body))
+	}
+	var comments Listing
+	if err := json.NewDecoder(resp.Body).Decode(&comments); err != nil {
+		return content, err
+	}
+	for _, ch := range comments.Data.Children {
+		d := ch.Data
+		content.Comments = append(content.Comments, RedditComment{
+			Subreddit: d.Subreddit,
+			Body:      d.Body,
+			Permalink: "https://www.reddit.com" + d.Permalink,
+			Score:     d.Score,
+			CreatedAt: time.Unix(int64(d.CreatedUTC), 0).UTC(),
+		})
+	}
+
+	return content, nil
+}
+
 func GetRedditUserProfile(ctx context.Context, username string) (*ProfileInformation, error) {
-	url := fmt.Sprintf("https://www.reddit.com/user/%s/about.json", username)
-	resp, err := doGET(ctx, url)
+	base := "https://www.reddit.com"
+	aboutURL := fmt.Sprintf("%s/user/%s/about.json", base, username)
+
+	// About
+	resp, err := doGET(ctx, aboutURL)
 	if err != nil {
 		return nil, err
 	}
@@ -161,109 +247,17 @@ func GetRedditUserProfile(ctx context.Context, username string) (*ProfileInforma
 	if err := json.NewDecoder(resp.Body).Decode(&about); err != nil {
 		return nil, err
 	}
-	return &ProfileInformation{
+
+	prof := &ProfileInformation{
 		Username:   about.Data.Name,
 		IconURL:    about.Data.IconImg,
 		TotalKarma: about.Data.TotalKarma,
 		Bio:        about.Data.Subreddit.PublicDescription,
 		CakeDay:    time.Unix(int64(about.Data.CreatedUTC), 0).UTC(),
-	}, nil
+	}
+
+	return prof, nil
 }
-
-func estimateVotes(score int, ratio *float64) (up *int, down *int) {
-	if ratio == nil {
-		return nil, nil
-	}
-	r := *ratio
-	if r <= 0 || r >= 1 || math.Abs(2*r-1) < 1e-6 {
-		return nil, nil
-	}
-	T := float64(score) / (2*r - 1)
-	if T < 0 {
-		return nil, nil
-	}
-	u := int(math.Round(r * T))
-	d := int(math.Round((1 - r) * T))
-	return &u, &d
-}
-
-func GetRedditUserPosts(ctx context.Context, username string, postLimit, commentLimit int) (*CommentsAndPosts, error) {
-	base := "https://www.reddit.com"
-	submittedURL := fmt.Sprintf("%s/user/%s/submitted.json?limit=%d", base, username, postLimit)
-	commentsURL := fmt.Sprintf("%s/user/%s/comments.json?limit=%d", base, username, commentLimit)
-
-	out := &CommentsAndPosts{}
-
-	// posts
-	resp, err := doGET(ctx, submittedURL)
-	if err != nil {
-		return out, err
-	}
-	defer resp.Body.Close()
-	var posts Listing
-	if err := json.NewDecoder(resp.Body).Decode(&posts); err != nil {
-		return out, err
-	}
-	for _, ch := range posts.Data.Children {
-		d := ch.Data
-		up, down := estimateVotes(d.Score, d.UpvoteRatio)
-		if d.Ups != nil {
-			up = d.Ups
-			if d.Score != 0 {
-				downVal := *d.Ups - d.Score
-				if downVal >= 0 {
-					down = &downVal
-				}
-			}
-		}
-		out.Posts = append(out.Posts, RedditPost{
-			Subreddit:   d.Subreddit,
-			Title:       d.Title,
-			URL:         d.URL,
-			Permalink:   "https://www.reddit.com" + d.Permalink,
-			Score:       d.Score,
-			NumComments: d.NumComments,
-			CreatedAt:   time.Unix(int64(d.CreatedUTC), 0).UTC(),
-			Upvotes:     up,
-			Downvotes:   down,
-		})
-	}
-
-	// comments
-	resp, err = doGET(ctx, commentsURL)
-	if err != nil {
-		return out, err
-	}
-	defer resp.Body.Close()
-	var comments Listing
-	if err := json.NewDecoder(resp.Body).Decode(&comments); err != nil {
-		return out, err
-	}
-	for _, ch := range comments.Data.Children {
-		d := ch.Data
-		var up, down *int
-		if d.Ups != nil {
-			up = d.Ups
-			downVal := *d.Ups - d.Score
-			if downVal >= 0 {
-				down = &downVal
-			}
-		}
-		out.Comments = append(out.Comments, RedditComment{
-			Subreddit: d.Subreddit,
-			Body:      d.Body,
-			Permalink: "https://www.reddit.com" + d.Permalink,
-			Score:     d.Score,
-			CreatedAt: time.Unix(int64(d.CreatedUTC), 0).UTC(),
-			Upvotes:   up,
-			Downvotes: down,
-		})
-	}
-
-	return out, nil
-}
-
-// ----- Claude -----
 
 func SendContentToClaude(ctx context.Context, content *CommentsAndPosts) (*ParsedAssessment, error) {
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
@@ -275,32 +269,35 @@ func SendContentToClaude(ctx context.Context, content *CommentsAndPosts) (*Parse
 		model = "claude-sonnet-4-20250514"
 	}
 
-	in := ClaudeInput{Posts: content.Posts, Comments: content.Comments}
-	inputJSON, _ := json.Marshal(in)
-
-	// build request
-	type TextBlock struct{ Type, Text string }
-	type ClaudeMessage struct {
-		Role    string        `json:"role"`
-		Content []interface{} `json:"content"`
+	// Limit payload size
+	const maxPosts = 1000
+	const maxComments = 1000
+	posts := content.Posts
+	if len(posts) > maxPosts {
+		posts = posts[:maxPosts]
 	}
-	type ClaudeRequest struct {
-		Model     string          `json:"model"`
-		MaxTokens int             `json:"max_tokens"`
-		System    string          `json:"system"`
-		Messages  []ClaudeMessage `json:"messages"`
-	}
-	type ClaudeResponse struct {
-		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"content"`
+	comments := content.Comments
+	if len(comments) > maxComments {
+		comments = comments[:maxComments]
 	}
 
-	system := `You are a mental health analyst. Return ONLY strict JSON with this schema:
+	// Only send posts and comments
+	in := ClaudeInput{
+		Posts:    posts,
+		Comments: comments,
+	}
+	inputJSON, err := json.Marshal(in)
+	if err != nil {
+		return nil, err
+	}
+
+	payload := ClaudeRequest{
+		Model:     model,
+		MaxTokens: 1024,
+		System: `You are a mental health analyst. Return ONLY strict JSON with this schema:
 {
   "executive_summary": string,
-  "confidence_score": number,
+  "confidence_score": number,  // 0..100
   "items": [
     {
       "type": "post"|"comment",
@@ -308,19 +305,21 @@ func SendContentToClaude(ctx context.Context, content *CommentsAndPosts) (*Parse
       "permalink": string,
       "content": string,
       "indicators": [string],
-      "relevance_score": number
+      "relevance_score": number // 0..10
     }
   ]
-}`
-
-	userPrompt := "Analyze the following Reddit posts and comments:\n\n" + string(inputJSON)
-
-	payload := ClaudeRequest{
-		Model:     model,
-		MaxTokens: 2000,
-		System:    system,
+}
+Limit to at most 10 items and include permalinks. No additional prose.`,
 		Messages: []ClaudeMessage{
-			{Role: "user", Content: []interface{}{TextBlock{"text", userPrompt}}},
+			{
+				Role: "user",
+				Content: []interface{}{
+					TextBlock{
+						Type: "text",
+						Text: "Analyze this Reddit user's posts and comments and return a brief JSON summary with keys: topics, writing_style, activity_patterns, notable_posts (permalinks). Input follows:\n\n" + string(inputJSON),
+					},
+				},
+			},
 		},
 	}
 
@@ -330,7 +329,7 @@ func SendContentToClaude(ctx context.Context, content *CommentsAndPosts) (*Parse
 	req.Header.Set("x-api-key", apiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -342,21 +341,21 @@ func SendContentToClaude(ctx context.Context, content *CommentsAndPosts) (*Parse
 		return nil, fmt.Errorf("claude api error: %s - %s", resp.Status, string(respBytes))
 	}
 
-	var claudeResp ClaudeResponse
-	if err := json.Unmarshal(respBytes, &claudeResp); err != nil {
-		return nil, err
+	var cResp ClaudeResponse
+	if err := json.Unmarshal(respBytes, &cResp); err != nil {
+		return nil, fmt.Errorf("claude decode error: %w", err)
 	}
-	if len(claudeResp.Content) == 0 {
-		return nil, fmt.Errorf("empty Claude response")
+	if len(cResp.Content) == 0 {
+		return nil, fmt.Errorf("claude response had no content")
 	}
 
-	// parse model output
+	// Parse the model output as strict JSON; if wrapped with prose, trim to outermost braces.
+	raw := cResp.Content[0].Text
 	var parsed ParsedAssessment
-	raw := claudeResp.Content[0].Text
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
-		if jStart := strings.IndexByte(raw, '{'); jStart >= 0 {
-			if jEnd := strings.LastIndexByte(raw, '}'); jEnd > jStart {
-				if err2 := json.Unmarshal([]byte(raw[jStart:jEnd+1]), &parsed); err2 == nil {
+		if start := strings.IndexByte(raw, '{'); start >= 0 {
+			if end := strings.LastIndexByte(raw, '}'); end > start {
+				if err2 := json.Unmarshal([]byte(raw[start:end+1]), &parsed); err2 == nil {
 					return &parsed, nil
 				}
 			}
