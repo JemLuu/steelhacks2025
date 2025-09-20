@@ -19,8 +19,9 @@ const mockUserProfile: UserProfile = {
   profileImageUrl: 'https://picsum.photos/400/400',
   location: 'Pittsburgh, PA',
   joinDate: '2020-03-15T00:00:00Z',
-  followersCount: 421,
-  followingCount: 892,
+  karma: 2847,
+  postKarma: 1523,
+  commentKarma: 1324,
   postsCount: 350,
   verified: false
 };
@@ -32,13 +33,17 @@ const mockPosts: Post[] = [
     tag: 'concerning',
     tagColor: 'bg-orange-500',
     timestamp: '2h ago',
-    content: 'Another sleepless night. Can\'t seem to turn my brain off. The thoughts just keep racing and I\'m exhausted. #insomnia #mentalhealth',
-    likes: 12,
-    shares: 3,
-    replies: 7,
+    title: 'Another sleepless night - thoughts won\'t stop racing',
+    content: 'Another sleepless night. Can\'t seem to turn my brain off. The thoughts just keep racing and I\'m exhausted. Anyone else dealing with this?',
+    subreddit: 'r/mentalhealth',
+    upvotes: 45,
+    downvotes: 3,
+    score: 42,
+    comments: 18,
     relevanceScore: 92,
     sentimentScore: -0.7,
-    concerns: ['sleep_disturbance', 'racing_thoughts', 'exhaustion']
+    concerns: ['sleep_disturbance', 'racing_thoughts', 'exhaustion'],
+    postType: 'text'
   },
   {
     id: 'post_2',
@@ -46,13 +51,17 @@ const mockPosts: Post[] = [
     tag: 'mood indicator',
     tagColor: 'bg-red-500',
     timestamp: '5h ago',
-    content: 'Feeling so disconnected from everyone lately. Even in a room full of people, I feel completely alone. Is this what my life has become?',
-    likes: 8,
-    shares: 1,
-    replies: 4,
+    title: 'Feeling completely disconnected and alone',
+    content: 'Feeling so disconnected from everyone lately. Even in a room full of people, I feel completely alone. Is this what my life has become? How do you reconnect with people when everything feels meaningless?',
+    subreddit: 'r/depression',
+    upvotes: 127,
+    downvotes: 8,
+    score: 119,
+    comments: 34,
     relevanceScore: 89,
     sentimentScore: -0.8,
-    concerns: ['social_isolation', 'loneliness', 'existential_questioning']
+    concerns: ['social_isolation', 'loneliness', 'existential_questioning'],
+    postType: 'text'
   },
   {
     id: 'post_3',
@@ -60,13 +69,17 @@ const mockPosts: Post[] = [
     tag: 'behavioral',
     tagColor: 'bg-yellow-500',
     timestamp: '1d ago',
-    content: 'Canceled plans again tonight. Just don\'t have the energy to pretend everything is fine. My friends probably think I\'m flaky.',
-    likes: 15,
-    shares: 2,
-    replies: 9,
+    title: 'Canceled plans again - feeling like a flaky friend',
+    content: 'Canceled plans again tonight. Just don\'t have the energy to pretend everything is fine. My friends probably think I\'m flaky. How do you explain depression fatigue without sounding like you\'re making excuses?',
+    subreddit: 'r/anxiety',
+    upvotes: 89,
+    downvotes: 4,
+    score: 85,
+    comments: 23,
     relevanceScore: 85,
     sentimentScore: -0.6,
-    concerns: ['social_withdrawal', 'energy_depletion', 'masking_behavior']
+    concerns: ['social_withdrawal', 'energy_depletion', 'masking_behavior'],
+    postType: 'text'
   },
   {
     id: 'post_4',
@@ -74,13 +87,17 @@ const mockPosts: Post[] = [
     tag: 'sleep pattern',
     tagColor: 'bg-orange-500',
     timestamp: '2d ago',
-    content: '3 AM and still wide awake. This has been my routine for weeks now. Coffee is basically a food group at this point ☕️',
-    likes: 6,
-    shares: 0,
-    replies: 2,
+    title: '3 AM and still wide awake - my new normal',
+    content: '3 AM and still wide awake. This has been my routine for weeks now. Coffee is basically a food group at this point ☕️ Anyone have tips for fixing a completely broken sleep schedule?',
+    subreddit: 'r/insomnia',
+    upvotes: 67,
+    downvotes: 2,
+    score: 65,
+    comments: 15,
     relevanceScore: 78,
     sentimentScore: -0.4,
-    concerns: ['insomnia', 'sleep_cycle_disruption', 'caffeine_dependency']
+    concerns: ['insomnia', 'sleep_cycle_disruption', 'caffeine_dependency'],
+    postType: 'text'
   },
   {
     id: 'post_5',
@@ -88,13 +105,17 @@ const mockPosts: Post[] = [
     tag: 'emotional',
     tagColor: 'bg-red-500',
     timestamp: '3d ago',
-    content: 'Some days I wonder if anyone would notice if I just disappeared. Not in a scary way, just... would my absence make a difference?',
-    likes: 4,
-    shares: 1,
-    replies: 12,
+    title: 'Would anyone notice if I just disappeared?',
+    content: 'Some days I wonder if anyone would notice if I just disappeared. Not in a scary way, just... would my absence make a difference? Do I actually matter to anyone? These thoughts have been consuming me lately.',
+    subreddit: 'r/depression',
+    upvotes: 156,
+    downvotes: 12,
+    score: 144,
+    comments: 47,
     relevanceScore: 94,
     sentimentScore: -0.9,
-    concerns: ['existential_thoughts', 'self_worth', 'passive_ideation']
+    concerns: ['existential_thoughts', 'self_worth', 'passive_ideation'],
+    postType: 'text'
   }
 ];
 

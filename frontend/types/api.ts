@@ -7,8 +7,9 @@ export interface UserProfile {
   profileImageUrl: string;
   location?: string;
   joinDate: string;
-  followersCount: number;
-  followingCount: number;
+  karma: number;
+  postKarma: number;
+  commentKarma: number;
   postsCount: number;
   verified: boolean;
 }
@@ -19,13 +20,17 @@ export interface Post {
   tag: string;
   tagColor: string;
   timestamp: string;
+  title?: string;
   content: string;
-  likes: number;
-  shares: number;
-  replies: number;
+  subreddit: string;
+  upvotes: number;
+  downvotes: number;
+  score: number;
+  comments: number;
   relevanceScore: number;
   sentimentScore: number;
   concerns: string[];
+  postType: 'text' | 'link' | 'image';
 }
 
 export interface MentalHealthAssessment {

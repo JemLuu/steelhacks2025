@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, MapPin, Calendar, Users, MessageCircle, Heart, Repeat2, Brain, AlertTriangle, Activity, X } from 'lucide-react';
+import { ArrowLeft, MapPin, Calendar, Users, MessageCircle, ArrowUp, ArrowDown, Share, Brain, AlertTriangle, Activity, X } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card } from './ui/card';
@@ -207,7 +207,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
               </Button>
               <div>
                 <h1 className="text-2xl font-semibold text-gray-900">Mental Health Screening Tool</h1>
-                <p className="text-gray-600">Analyze Reddit activity for mental health indicators to assist in psychiatric screening</p>
+                <p className="text-gray-600">Analyze Reddit activity for mental health indicators to assist in medical screening</p>
               </div>
             </div>
           </div>
@@ -266,8 +266,8 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                     </div>
 
                     <div className="flex items-center space-x-6 mt-3 text-sm">
-                      <span><strong>{userProfile.followersCount.toLocaleString()}</strong> <span className="text-gray-600">Followers</span></span>
-                      <span><strong>{userProfile.followingCount.toLocaleString()}</strong> <span className="text-gray-600">Following</span></span>
+                      <span><strong>{userProfile.karma.toLocaleString()}</strong> <span className="text-gray-600">Karma</span></span>
+                      <span><strong>{userProfile.postKarma.toLocaleString()}</strong> <span className="text-gray-600">Post Karma</span></span>
                       <span><strong>{userProfile.postsCount.toLocaleString()}</strong> <span className="text-gray-600">Posts</span></span>
                     </div>
                   </div>
@@ -325,21 +325,25 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                           <span className="text-sm text-gray-500">{post.timestamp}</span>
                         </div>
 
-                        <p className="text-gray-800 text-sm mb-3">{post.content}</p>
+                        <div className="mb-2">
+                          <span className="text-xs text-blue-600 font-medium">{post.subreddit}</span>
+                          {post.title && (
+                            <h4 className="text-sm font-semibold text-gray-900 mt-1">{post.title}</h4>
+                          )}
+                        </div>
+
+                        <p className="text-gray-700 text-sm mb-3">{post.content}</p>
 
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-4 text-gray-500">
                             <div className="flex items-center space-x-1">
-                              <Heart className="w-4 h-4" />
-                              <span className="text-xs">{post.likes}</span>
-                            </div>
-                            <div className="flex items-center space-x-1">
-                              <Repeat2 className="w-4 h-4" />
-                              <span className="text-xs">{post.shares}</span>
+                              <ArrowUp className="w-4 h-4 text-orange-500" />
+                              <span className="text-xs font-medium">{post.score}</span>
+                              <ArrowDown className="w-4 h-4" />
                             </div>
                             <div className="flex items-center space-x-1">
                               <MessageCircle className="w-4 h-4" />
-                              <span className="text-xs">{post.replies}</span>
+                              <span className="text-xs">{post.comments}</span>
                             </div>
                           </div>
                           <span className="text-xs text-blue-600 font-medium">
@@ -454,17 +458,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
         <Dialog open={true} onOpenChange={handleCloseModal}>
           <DialogContent className="max-w-2xl mx-auto max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="flex items-center justify-between">
-                <span>Post Analysis</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleCloseModal}
-                  className="h-8 w-8 p-0 ml-auto"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </DialogTitle>
+              <DialogTitle>Post Analysis</DialogTitle>
             </DialogHeader>
 
             <div className="space-y-6">
@@ -491,6 +485,12 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
 
               {/* Post Content */}
               <div className="bg-gray-50 rounded-lg p-6">
+                <div className="mb-3">
+                  <span className="text-sm text-blue-600 font-medium">{selectedPost.subreddit}</span>
+                  {selectedPost.title && (
+                    <h3 className="text-lg font-semibold text-gray-900 mt-1">{selectedPost.title}</h3>
+                  )}
+                </div>
                 <p className="text-gray-800 leading-relaxed text-base">{selectedPost.content}</p>
               </div>
 
@@ -498,16 +498,13 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                 <div className="flex items-center space-x-6 text-gray-600">
                   <div className="flex items-center space-x-2">
-                    <Heart className="w-5 h-5" />
-                    <span className="text-sm font-medium">{selectedPost.likes} upvotes</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Repeat2 className="w-5 h-5" />
-                    <span className="text-sm font-medium">{selectedPost.shares} shares</span>
+                    <ArrowUp className="w-5 h-5 text-orange-500" />
+                    <span className="text-sm font-medium">{selectedPost.score}</span>
+                    <ArrowDown className="w-5 h-5" />
                   </div>
                   <div className="flex items-center space-x-2">
                     <MessageCircle className="w-5 h-5" />
-                    <span className="text-sm font-medium">{selectedPost.replies} comments</span>
+                    <span className="text-sm font-medium">{selectedPost.comments}</span>
                   </div>
                 </div>
                 <div className="text-right">
