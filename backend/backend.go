@@ -309,7 +309,7 @@ func SendContentToClaude(ctx context.Context, content *CommentsAndPosts) (*Parse
     }
   ]
 }
-Limit to at most 10 items and include permalinks. No additional prose.`,
+Limit to at most 5 items and include permalinks. No additional prose.`,
 		Messages: []ClaudeMessage{
 			{
 				Role: "user",
