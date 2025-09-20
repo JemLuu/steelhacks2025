@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -36,24 +35,24 @@ func main() {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	// dynamic routes: /api/reddit/{username}/profile or /assessment
-	mux.HandleFunc("/api/reddit/", func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/api/reddit/")
-		if path == "" {
+	// profile endpoint: /api/reddit/profile/{username}
+	mux.HandleFunc("/api/reddit/profile/", func(w http.ResponseWriter, r *http.Request) {
+		username := r.URL.Path[len("/api/reddit/profile/"):]
+		if username == "" {
 			http.Error(w, "username required", http.StatusBadRequest)
 			return
 		}
-		parts := strings.SplitN(path, "/", 2)
-		username := parts[0]
+		handleProfile(w, r, username)
+	})
 
-		switch {
-		case len(parts) == 2 && parts[1] == "profile":
-			handleProfile(w, r, username)
-		case len(parts) == 2 && parts[1] == "assessment":
-			handleAssessment(w, r, username)
-		default:
-			http.Error(w, "not found", http.StatusNotFound)
+	// assessment endpoint: /api/reddit/assessment/{username}
+	mux.HandleFunc("/api/reddit/assessment/", func(w http.ResponseWriter, r *http.Request) {
+		username := r.URL.Path[len("/api/reddit/assessment/"):]
+		if username == "" {
+			http.Error(w, "username required", http.StatusBadRequest)
+			return
 		}
+		handleAssessment(w, r, username)
 	})
 
 	// server
