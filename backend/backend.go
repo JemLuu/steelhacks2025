@@ -124,6 +124,32 @@ type ParsedAssessment struct {
 	Items            []AssessmentItem `json:"items"`
 }
 
+// Scores returned by the external API (single prediction)
+type MHScore struct {
+	Depression     float64 `json:"depression"`
+	Anxiety        float64 `json:"anxiety"`
+	PTSD           float64 `json:"ptsd"`
+	Schizophrenia  float64 `json:"schizophrenia"`
+	Bipolar        float64 `json:"bipolar"`
+	EatingDisorder float64 `json:"eating_disorder"`
+	ADHD           float64 `json:"adhd"`
+	Overall        float64 `json:"overall_score"`
+}
+
+// Batch response shape from the external API
+type MHBatchResponse struct {
+	Predictions []MHScore `json:"predictions"`
+}
+
+// What we return per item (post or comment) after scoring
+type ClassifiedItem struct {
+	Type      string  `json:"type"` // "post" | "comment"
+	Subreddit string  `json:"subreddit"`
+	Permalink string  `json:"permalink"`
+	Content   string  `json:"content"` // post.Content or comment.Body
+	Score     MHScore `json:"score"`
+}
+
 func doGET(ctx context.Context, url string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -157,6 +183,15 @@ func doGET(ctx context.Context, url string) (*http.Response, error) {
 func drainAndClose(rc io.ReadCloser) error {
 	_, _ = io.Copy(io.Discard, rc)
 	return rc.Close()
+}
+
+// Configure the external API base via env; falls back to your provided URL.
+func externalAPIBase() string {
+	base := os.Getenv("MENTAL_API_BASE")
+	if base == "" {
+		base = "https://jluu196--mental-health-api-fastapi-app.modal.run"
+	}
+	return strings.TrimRight(base, "/")
 }
 
 func GetRedditUserPosts(ctx context.Context, username string, postLimit, commentLimit int) (*CommentsAndPosts, error) {
@@ -375,4 +410,107 @@ Limit to at most 5 items and include permalinks. No additional prose.`,
 	}
 
 	return &parsed, nil
+}
+
+// callPredictSingle hits POST /predict for one text
+func callPredictSingle(ctx context.Context, text string) (MHScore, error) {
+	payload := struct {
+		Text string `json:"text"`
+	}{Text: text}
+	body, _ := json.Marshal(payload)
+
+	url := externalAPIBase() + "/predict"
+	req, _ := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return MHScore{}, fmt.Errorf("single request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	respBytes, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return MHScore{}, fmt.Errorf("single API status %s: %s", resp.Status, string(respBytes))
+	}
+
+	var out MHScore
+	if err := json.Unmarshal(respBytes, &out); err != nil {
+		return MHScore{}, fmt.Errorf("decode single response: %w", err)
+	}
+	return out, nil
+}
+
+// PredictSequential calls the external API once for each post and comment.
+func PredictSequential(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedItem, error) {
+	if cp == nil {
+		return nil, fmt.Errorf("nil CommentsAndPosts")
+	}
+
+	results := []ClassifiedItem{}
+
+	// Loop over posts
+	for _, p := range cp.Posts {
+		text := p.Content
+		if strings.TrimSpace(text) == "" {
+			text = p.Title
+		}
+		if strings.TrimSpace(text) == "" {
+			text = "(empty post)"
+		}
+
+		sc, err := callPredictSingle(ctx, text)
+		if err != nil {
+			// append with empty score if failed
+			results = append(results, ClassifiedItem{
+				Type:      "post",
+				Subreddit: p.Subreddit,
+				Permalink: p.Permalink,
+				Content:   text,
+				Score:     MHScore{}, // all zeros
+			})
+			continue
+		}
+		results = append(results, ClassifiedItem{
+			Type:      "post",
+			Subreddit: p.Subreddit,
+			Permalink: p.Permalink,
+			Content:   text,
+			Score:     sc,
+		})
+
+		// optional pacing to avoid hammering
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Loop over comments
+	for _, c := range cp.Comments {
+		text := c.Body
+		if strings.TrimSpace(text) == "" {
+			text = "(empty comment)"
+		}
+
+		sc, err := callPredictSingle(ctx, text)
+		if err != nil {
+			results = append(results, ClassifiedItem{
+				Type:      "comment",
+				Subreddit: c.Subreddit,
+				Permalink: c.Permalink,
+				Content:   text,
+				Score:     MHScore{},
+			})
+			continue
+		}
+		results = append(results, ClassifiedItem{
+			Type:      "comment",
+			Subreddit: c.Subreddit,
+			Permalink: c.Permalink,
+			Content:   text,
+			Score:     sc,
+		})
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return results, nil
 }

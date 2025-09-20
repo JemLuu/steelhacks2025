@@ -9,6 +9,9 @@ import (
 	"time"
 )
 
+const postLimit = 1000
+const commentLimit = 1000
+
 // ----- API response types -----
 
 type APIProfileResponse struct {
@@ -55,6 +58,16 @@ func main() {
 		handleAssessment(w, r, username)
 	})
 
+	// prediction endpoint: /api/reddit/predict/{username}
+	mux.HandleFunc("/api/reddit/predict/", func(w http.ResponseWriter, r *http.Request) {
+		username := r.URL.Path[len("/api/reddit/predict/"):]
+		if username == "" {
+			http.Error(w, "username required", http.StatusBadRequest)
+			return
+		}
+		handlePredict(w, r, username)
+	})
+
 	// server
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -93,8 +106,6 @@ func handleAssessment(w http.ResponseWriter, r *http.Request, username string) {
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 
-	const postLimit = 200
-	const commentLimit = 200
 	content, err := GetRedditUserPosts(ctx, username, postLimit, commentLimit)
 	if err != nil {
 		http.Error(w, "failed to fetch posts/comments: "+err.Error(), http.StatusBadGateway)
@@ -118,6 +129,33 @@ func handleAssessment(w http.ResponseWriter, r *http.Request, username string) {
 		ExecutiveSummary: parsed.ExecutiveSummary,
 		ConfidenceScore:  parsed.ConfidenceScore,
 		Items:            parsed.Items,
+	})
+}
+
+func handlePredict(w http.ResponseWriter, r *http.Request, username string) {
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+
+	content, err := GetRedditUserPosts(ctx, username, postLimit, commentLimit)
+	if err != nil {
+		http.Error(w, "failed to fetch posts/comments: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	items, err := PredictSequential(ctx, content)
+	if err != nil {
+		http.Error(w, "prediction failed: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, struct {
+		Username string           `json:"username"`
+		Count    int              `json:"count"`
+		Items    []ClassifiedItem `json:"items"`
+	}{
+		Username: username,
+		Count:    len(items),
+		Items:    items,
 	})
 }
 
