@@ -396,12 +396,12 @@ func SendPermalinksToClaude(ctx context.Context, classified []ClassifiedItem) (*
 - type ("post"|"comment")
 - subreddit
 - content (text to consider)
-- score (per-category scores + overall_score from an external classifier)
+- score (per-category scores + overall_score from an external classifier). Note these are ranked from 0-1, where the mental health gets worse as it goes to 1.
 
 Task:
 1) Produce an executive_summary (string) of the user's mental health state.
 2) Produce a confidence_score (0..100).
-3) A mental health score (0..100).
+3) A mental_health_score (0..100). Note that 0 is good mental health and 100 is bad mental health.
 4) Select at most 5 notable items and RETURN ONLY their permalinks plus:
    - indicators: short bullet-like phrases (strings). These can be positive or negative. These have to make sense in the context of the scores given to the post.
    - relevance_score (0..10)
