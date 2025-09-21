@@ -22,6 +22,8 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
   const [streamedText, setStreamedText] = useState('');
   const [showFindings, setShowFindings] = useState(false);
   const [findingIndex, setFindingIndex] = useState(0);
+  const [streamedKeyPoints, setStreamedKeyPoints] = useState<string[]>([]);
+  const [isStreamingKeyPoints, setIsStreamingKeyPoints] = useState(false);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [isScrollingPaused, setIsScrollingPaused] = useState(false);
   const [isAutoScrolling, setIsAutoScrolling] = useState(true);
@@ -30,6 +32,8 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
 
   // API Data State
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [postCount, setPostCount] = useState<number | null>(null);
+  const [commentCount, setCommentCount] = useState<number | null>(null);
   const [assessment, setAssessment] = useState<MentalHealthAssessment | null>(null);
   const [aiReport, setAiReport] = useState<AIReport | null>(null);
   const [loading, setLoading] = useState(true);
@@ -80,6 +84,8 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
       setLoading(true);
       setError(null);
       setStreamedText('');
+      setStreamedKeyPoints([]);
+      setIsStreamingKeyPoints(false);
 
       // Step 1: Get user profile
       const userResponse = await apiService.getUserProfile(targetUsername);
@@ -89,6 +95,18 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
         throw new Error(userResponse.error?.message || 'Failed to load user profile');
       }
       setUserProfile(userResponse.data!);
+
+      // Step 1.5: Get post count (async, don't block)
+      apiService.getPostCount(targetUsername).then(postCountResponse => {
+        if (!signal?.aborted && postCountResponse.success) {
+          setPostCount(postCountResponse.data!.post_count);
+          setCommentCount(postCountResponse.data!.comment_count);
+        }
+      }).catch(err => {
+        console.warn('Post count fetch failed:', err);
+        setPostCount(0); // Default fallback
+        setCommentCount(0);
+      });
 
       // Step 2: Create mental health assessment
       if (signal?.aborted) return;
@@ -123,6 +141,10 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
             setTimeout(() => {
               if (!signal?.aborted) {
                 setShowFindings(true);
+                // Start streaming key points after summary is complete
+                if (assessmentResponse.data!.keyPoints && assessmentResponse.data!.keyPoints.length > 0) {
+                  setIsStreamingKeyPoints(true);
+                }
               }
             }, 500);
           }
@@ -211,6 +233,37 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
     return () => clearInterval(interval);
   }, [isAnalyzing, loadingTexts.length]);
 
+  // Key points streaming effect
+  useEffect(() => {
+    if (isStreamingKeyPoints && assessment?.keyPoints && assessment.keyPoints.length > 0) {
+      console.log('Starting key points streaming. Total points:', assessment.keyPoints.length);
+      console.log('Key points to stream:', assessment.keyPoints);
+
+      // Clear any existing streamed points
+      setStreamedKeyPoints([]);
+
+      // Stream points one by one with delays
+      assessment.keyPoints.forEach((point, index) => {
+        setTimeout(() => {
+          console.log(`Adding point ${index + 1}:`, point);
+          setStreamedKeyPoints(prev => {
+            const newPoints = [...prev, point];
+            console.log('Current streamed points:', newPoints);
+            return newPoints;
+          });
+
+          // Stop streaming after the last point
+          if (index === assessment.keyPoints.length - 1) {
+            setTimeout(() => {
+              console.log('All points streamed, stopping');
+              setIsStreamingKeyPoints(false);
+            }, 100);
+          }
+        }, index * 800);
+      });
+    }
+  }, [isStreamingKeyPoints, assessment?.keyPoints]);
+
   const handleSearchSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isRateLimited) return;
@@ -224,9 +277,13 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
 
       // Reset all state and reload with new handle
       setUserProfile(null);
+      setPostCount(null);
+      setCommentCount(null);
       setAssessment(null);
       setAiReport(null);
       setStreamedText('');
+      setStreamedKeyPoints([]);
+      setIsStreamingKeyPoints(false);
       setShowFindings(false);
       setFindingIndex(0);
       setSelectedPost(null);
@@ -379,8 +436,8 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
 
                     <div className="flex items-center space-x-6 mt-2 text-sm">
                       <span><strong>{userProfile.karma.toLocaleString()}</strong> <span className="text-gray-600">Karma</span></span>
-                      <span><strong>{userProfile.postKarma.toLocaleString()}</strong> <span className="text-gray-600">Post Karma</span></span>
-                      <span><strong>{userProfile.postsCount.toLocaleString()}</strong> <span className="text-gray-600">Posts</span></span>
+                      <span><strong>{postCount !== null ? postCount.toLocaleString() : '...'}</strong> <span className="text-gray-600">Posts</span></span>
+                      <span><strong>{commentCount !== null ? commentCount.toLocaleString() : '...'}</strong> <span className="text-gray-600">Comments</span></span>
                     </div>
                   </div>
                 </div>
@@ -397,7 +454,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
 
                 <div
                   ref={scrollContainerRef}
-                  className={`h-[440px] overflow-y-auto cursor-pointer ${isAutoScrolling ? 'no-scrollbar' : ''}`}
+                  className={`h-[440px] overflow-y-auto overflow-x-hidden cursor-pointer ${isAutoScrolling ? 'no-scrollbar' : ''}`}
                   onWheel={() => setIsAutoScrolling(false)}
                   onTouchStart={() => setIsAutoScrolling(false)}
                   onMouseDown={() => setIsAutoScrolling(false)}
@@ -430,11 +487,11 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                         <div className="mb-2">
                           <span className="text-xs text-blue-600 font-medium">{post.subreddit}</span>
                           {post.title && (
-                            <h4 className="text-sm font-semibold text-gray-900 mt-1">{post.title}</h4>
+                            <h4 className="text-sm font-semibold text-gray-900 mt-1 break-words">{post.title}</h4>
                           )}
                         </div>
 
-                        <p className="text-gray-700 text-sm mb-3">{post.content}</p>
+                        <p className="text-gray-700 text-sm mb-3 break-words">{post.content}</p>
 
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-4 text-gray-500">
@@ -496,6 +553,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
               </Card>
             )}
 
+
             {/* Mental Health Evaluation Panel */}
             {assessment && (
               <>
@@ -553,62 +611,74 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
             )}
 
             {/* Executive Summary */}
-            <Card className="p-6 bg-white border border-gray-200 rounded-lg">
-              <h4 className="font-semibold text-gray-900 mb-4">Executive Summary</h4>
+            <Card className="p-6 bg-gradient-to-br from-blue-50 to-indigo-100 border border-blue-200 rounded-lg relative overflow-hidden">
+              {/* Background decoration */}
+              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-blue-200/30 to-transparent rounded-full -translate-y-16 translate-x-16"></div>
+              <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-indigo-200/20 to-transparent rounded-full translate-y-12 -translate-x-12"></div>
 
-              {isAnalyzing ? (
-                <div className="flex items-center space-x-3">
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                  <div className="relative h-6 overflow-hidden w-64">
-                    <AnimatePresence mode="wait">
-                      <motion.div
-                        key={loadingTextIndex}
-                        initial={{ y: 12, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        exit={{ y: -12, opacity: 0 }}
-                        transition={{ duration: 0.5, ease: "easeInOut" }}
-                        className="absolute inset-0 flex items-center"
-                      >
-                        <span className="text-gray-600 text-sm">
-                          {loadingTexts[loadingTextIndex]}
-                        </span>
-                      </motion.div>
-                    </AnimatePresence>
+              <div className="relative z-10">
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="flex items-center justify-center w-8 h-8 bg-blue-600 rounded-lg">
+                    <Brain className="w-5 h-5 text-white" />
                   </div>
+                  <h4 className="font-semibold text-blue-900 text-lg">Executive Summary</h4>
                 </div>
-              ) : (
-                <div>
-                  <p className="text-gray-700 text-sm leading-relaxed">
-                    {streamedText}
-                    {aiReport && streamedText.length < aiReport.executiveSummary.length && (
-                      <span className="animate-pulse">|</span>
-                    )}
-                  </p>
-                </div>
-              )}
+
+                {isAnalyzing ? (
+                  <div className="flex items-center space-x-3">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                    <div className="relative h-6 overflow-hidden w-64">
+                      <AnimatePresence mode="wait">
+                        <motion.div
+                          key={loadingTextIndex}
+                          initial={{ y: 12, opacity: 0 }}
+                          animate={{ y: 0, opacity: 1 }}
+                          exit={{ y: -12, opacity: 0 }}
+                          transition={{ duration: 0.5, ease: "easeInOut" }}
+                          className="absolute inset-0 flex items-center"
+                        >
+                          <span className="text-blue-700 text-sm font-medium">
+                            {loadingTexts[loadingTextIndex]}
+                          </span>
+                        </motion.div>
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-white/60 backdrop-blur-sm rounded-lg p-4 border border-white/50">
+                    <p className="text-gray-800 text-base leading-relaxed font-medium">
+                      {streamedText}
+                      {aiReport && streamedText.length < aiReport.executiveSummary.length && (
+                        <span className="animate-pulse text-blue-600">|</span>
+                      )}
+                    </p>
+                  </div>
+                )}
+              </div>
             </Card>
 
-            {/* Key Findings */}
-            {assessment && (
+
+            {/* Key Points */}
+            {assessment && assessment.keyPoints && assessment.keyPoints.length > 0 && (streamedKeyPoints.length > 0 || isStreamingKeyPoints) && (
               <Card className="p-6 bg-white border border-gray-200 rounded-lg">
-                <h4 className="font-semibold text-gray-900 mb-4">Key Findings</h4>
-
+                <h4 className="font-semibold text-gray-900 mb-4">Key Insights</h4>
                 <div className="space-y-3">
-                  {assessment.keyFindings.slice(0, findingIndex).map((finding, index) => (
-                    <div
+                  {streamedKeyPoints.map((point, index) => (
+                    <motion.div
                       key={index}
-                      className="flex items-start space-x-4 animate-in fade-in duration-500"
-                      style={{ animationDelay: `${index * 100}ms` }}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5, ease: "easeOut" }}
+                      className="flex items-start space-x-3"
                     >
-                      <div className="w-2 h-2 bg-blue-600 rounded-full mt-1.5 flex-shrink-0"></div>
-                      <p className="text-gray-700 text-sm">{finding}</p>
-                    </div>
+                      <div className="w-2 h-2 bg-blue-600 rounded-full mt-2 flex-shrink-0"></div>
+                      <p className="text-gray-700 text-sm font-medium">{point}</p>
+                    </motion.div>
                   ))}
-
-                  {showFindings && findingIndex < assessment.keyFindings.length && (
-                    <div className="flex items-center space-x-2 animate-in fade-in duration-300">
-                      <div className="animate-pulse w-2 h-2 bg-gray-400 rounded-full flex-shrink-0"></div>
-                      <span className="text-gray-400 text-sm">Analyzing additional patterns...</span>
+                  {isStreamingKeyPoints && streamedKeyPoints.length < assessment.keyPoints.length && (
+                    <div className="flex items-start space-x-3">
+                      <div className="w-2 h-2 bg-blue-400 rounded-full mt-2 flex-shrink-0 animate-pulse"></div>
+                      <p className="text-gray-500 text-sm font-medium italic">Loading insights...</p>
                     </div>
                   )}
                 </div>

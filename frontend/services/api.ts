@@ -68,8 +68,8 @@ function transformAssessmentToDisplayFormat(backendAssessment: MentalHealthAsses
 } {
   // Extract risk level from mental health score (backend sends 0-100)
   const getRiskLevel = (mental_health_score: number): 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL' => {
-    if (mental_health_score >= 90) return 'CRITICAL';
-    if (mental_health_score >= 70) return 'HIGH';
+    if (mental_health_score >= 80) return 'CRITICAL';
+    if (mental_health_score >= 60) return 'HIGH';
     if (mental_health_score >= 40) return 'MODERATE';
     return 'LOW';
   };
@@ -113,6 +113,7 @@ function transformAssessmentToDisplayFormat(backendAssessment: MentalHealthAsses
     overallRiskLevel: getRiskLevel(backendAssessment.mental_health_score),
     confidenceScore: Math.round(backendAssessment.confidence_score),
     mental_health_score: Math.round(backendAssessment.mental_health_score),
+    keyPoints: backendAssessment.key_points || [],
     analysisDate: new Date().toISOString(),
     keyFindings: [
       ...backendAssessment.executive_summary.split('.').filter(s => s.trim().length > 0).slice(0, 2).map(s => s.trim() + '.'),
@@ -182,6 +183,37 @@ export const apiService = {
         error: {
           code: 'USER_NOT_FOUND',
           message: 'User profile could not be retrieved',
+          details: error
+        }
+      };
+    }
+  },
+
+  // Post Count API
+  async getPostCount(username: string): Promise<APIResponse<{ post_count: number; comment_count: number }>> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/reddit/postcount/${username}`);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      return {
+        success: true,
+        data: {
+          post_count: result.post_count,
+          comment_count: result.comment_count
+        }
+      };
+    } catch (error) {
+      console.error('Post count fetch error:', error);
+      return {
+        success: false,
+        error: {
+          code: 'POST_COUNT_FAILED',
+          message: 'Post count could not be retrieved',
           details: error
         }
       };

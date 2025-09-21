@@ -25,6 +25,7 @@ type RedditAbout struct {
 		TotalKarma int     `json:"total_karma"`
 		CreatedUTC float64 `json:"created_utc"`
 		Subreddit  struct {
+			Title             string `json:"title"`
 			PublicDescription string `json:"public_description"` // bio
 		} `json:"subreddit"`
 	} `json:"data"`
@@ -51,6 +52,7 @@ type Listing struct {
 
 type ProfileInformation struct {
 	Username   string
+	Nickname   string
 	IconURL    string
 	TotalKarma int
 	Bio        string
@@ -246,6 +248,7 @@ func GetRedditUserProfile(ctx context.Context, username string) (*ProfileInforma
 
 	return &ProfileInformation{
 		Username:   about.Data.Name,
+		Nickname:   strings.TrimSpace(about.Data.Subreddit.Title),
 		IconURL:    about.Data.IconImg,
 		TotalKarma: about.Data.TotalKarma,
 		Bio:        about.Data.Subreddit.PublicDescription,
@@ -258,7 +261,7 @@ func GetRedditUserProfile(ctx context.Context, username string) (*ProfileInforma
 func externalAPIBase() string {
 	base := os.Getenv("MENTAL_API_BASE")
 	if base == "" {
-		base = "https://jluu196--mental-health-api-fastapi-app.modal.run"
+		base = "https://jluu196--mental-health-classification-api-fastapi-app.modal.run"
 	}
 	return strings.TrimRight(base, "/")
 }
@@ -375,6 +378,7 @@ func Predict(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedItem, error
 		Permalink string
 		Text      string
 		Title     string
+		CreatedAt time.Time
 	}
 	var queue []work
 	for _, p := range cp.Posts {
@@ -382,14 +386,14 @@ func Predict(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedItem, error
 		if t == "" {
 			t = "(empty post)"
 		}
-		queue = append(queue, work{"post", p.Subreddit, p.Permalink, t, p.Title})
+		queue = append(queue, work{"post", p.Subreddit, p.Permalink, t, p.Title, p.CreatedAt})
 	}
 	for _, c := range cp.Comments {
 		t := strings.TrimSpace(c.Body)
 		if t == "" {
 			t = "(empty comment)"
 		}
-		queue = append(queue, work{"comment", c.Subreddit, c.Permalink, t, ""})
+		queue = append(queue, work{"comment", c.Subreddit, c.Permalink, t, "", c.CreatedAt})
 	}
 
 	// Collect texts
@@ -414,6 +418,7 @@ func Predict(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedItem, error
 			Permalink: w.Permalink,
 			Title:     w.Title,
 			Content:   w.Text,
+			CreatedAt: w.CreatedAt,
 			Score:     scores[i],
 		}
 	}
@@ -433,6 +438,7 @@ type ClaudePermalinkAssessment struct {
 	ExecutiveSummary  string                `json:"executive_summary"`
 	ConfidenceScore   float64               `json:"confidence_score"`
 	MentalHealthScore float64               `json:"mental_health_score"`
+	KeyPoints         []string              `json:"key_points"`
 	Items             []ClaudePermalinkItem `json:"items"`
 }
 
@@ -487,12 +493,13 @@ Task:
 1) Produce an executive_summary (string) of the user's mental health state.
 2) Produce a confidence_score (0..100).
 3) A mental_health_score (0..100). Note that 0 is good mental health and 100 is bad mental health.
-4) Select at most 5 notable items and RETURN ONLY their permalinks plus:
+4) Produce key_points: an array of 3 concise strings (each <= 8 words) summarizing the most salient signals across the user's posts/comments.
+5) Select at most 10 notable items and RETURN ONLY their permalinks plus:
    - indicators: short bullet-like phrases that are a max of 3 words (strings). These can be positive or negative. These have to make sense in the context of the scores given to the post.
    - relevance_score (0..100)
 
 IMPORTANT:
-- OUTPUT STRICT JSON ONLY, with keys: executive_summary, confidence_score, mental_health_score, items.
+- OUTPUT STRICT JSON ONLY, with keys: executive_summary, confidence_score, mental_health_score, key_points, items.
 - Each item MUST have: permalink, indicators, relevance_score.
 - DO NOT include the raw content in your output.`
 
@@ -602,7 +609,7 @@ func OrchestrateAssessment(ctx context.Context, username string, postLimit, comm
 		ExecutiveSummary:  claudeOut.ExecutiveSummary,
 		ConfidenceScore:   claudeOut.ConfidenceScore,
 		MentalHealthScore: claudeOut.MentalHealthScore,
-		PostsCount:        len(cp.Posts),
+		KeyPoints:         claudeOut.KeyPoints,
 		Items:             items,
 	}, nil
 }
