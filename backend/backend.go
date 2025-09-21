@@ -70,7 +70,7 @@ type RedditPost struct {
 	Score       int
 	NumComments int
 	CreatedAt   time.Time
-	Content     string // NEW: title + "\n\n" + selftext
+	Content     string
 }
 
 type RedditComment struct {
@@ -178,7 +178,7 @@ func GetRedditUserPosts(ctx context.Context, username string, postLimit, comment
 	}
 	for _, ch := range posts.Data.Children {
 		d := ch.Data
-		content := strings.TrimSpace(d.Title)
+		content := ""
 		if s := strings.TrimSpace(d.SelfText); s != "" {
 			if content != "" {
 				content += "\n\n" + s
@@ -275,11 +275,13 @@ type MHScore struct {
 }
 
 type ClassifiedItem struct {
-	Type      string  `json:"type"` // "post" | "comment"
-	Subreddit string  `json:"subreddit"`
-	Permalink string  `json:"permalink"`
-	Content   string  `json:"content"`
-	Score     MHScore `json:"score"`
+	Type      string    `json:"type"` // "post" | "comment"
+	Subreddit string    `json:"subreddit"`
+	Permalink string    `json:"permalink"`
+	Title     string    `json:"title"`     // post title (empty for comments)
+	Content   string    `json:"content"`   // post selftext or comment body
+	CreatedAt time.Time `json:"created_at"` // when the post/comment was created
+	Score     MHScore   `json:"score"`
 }
 
 func callPredictSingle(ctx context.Context, text string) (MHScore, error) {
@@ -318,15 +320,20 @@ func PredictSequential(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedI
 
 	// posts
 	for _, p := range cp.Posts {
-		text := strings.TrimSpace(p.Content)
-		if text == "" {
-			text = strings.TrimSpace(p.Title)
+		// For analysis, combine title and content, but preserve them separately
+		analysisText := strings.TrimSpace(p.Title)
+		if content := strings.TrimSpace(p.Content); content != "" {
+			if analysisText != "" {
+				analysisText += "\n\n" + content
+			} else {
+				analysisText = content
+			}
 		}
-		if text == "" {
-			text = "(empty post)"
+		if analysisText == "" {
+			analysisText = "(empty post)"
 		}
 		/*
-			sc, err := callPredictSingle(ctx, text)
+			sc, err := callPredictSingle(ctx, analysisText)
 			if err != nil {
 				sc = MHScore{} // keep going; zeroed score
 			}
@@ -335,7 +342,9 @@ func PredictSequential(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedI
 			Type:      "post",
 			Subreddit: p.Subreddit,
 			Permalink: p.Permalink,
-			Content:   text,
+			Title:     p.Title,
+			Content:   p.Content, // Keep original content separate
+			CreatedAt: p.CreatedAt,
 			Score:     MHScore{},
 		})
 		// small pacing to be polite
@@ -358,7 +367,9 @@ func PredictSequential(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedI
 			Type:      "comment",
 			Subreddit: c.Subreddit,
 			Permalink: c.Permalink,
+			Title:     "", // Comments don't have titles
 			Content:   text,
+			CreatedAt: c.CreatedAt,
 			Score:     MHScore{},
 		})
 		time.Sleep(60 * time.Millisecond)
@@ -408,7 +419,7 @@ Task:
 3) A mental_health_score (0..100). Note that 0 is good mental health and 100 is bad mental health.
 4) Select at most 5 notable items and RETURN ONLY their permalinks plus:
    - indicators: short bullet-like phrases that are a max of 3 words (strings). These can be positive or negative. These have to make sense in the context of the scores given to the post.
-   - relevance_score (0..10)
+   - relevance_score (0..100)
 
 IMPORTANT:
 - OUTPUT STRICT JSON ONLY, with keys: executive_summary, confidence_score, mental_health_score, items.
@@ -507,7 +518,9 @@ func OrchestrateAssessment(ctx context.Context, username string, postLimit, comm
 				Type:           src.Type,
 				Subreddit:      src.Subreddit,
 				Permalink:      src.Permalink,
+				Title:          src.Title,
 				Content:        src.Content,
+				CreatedAt:      src.CreatedAt,
 				Score:          src.Score,
 				Indicators:     it.Indicators,
 				RelevanceScore: it.RelevanceScore,

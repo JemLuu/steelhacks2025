@@ -9,6 +9,58 @@ import {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
+// Helper function to format relative time
+function formatRelativeTime(dateString: string): string {
+  // Add debugging and fallback
+  if (!dateString) {
+    console.warn('No date string provided to formatRelativeTime');
+    return 'Unknown';
+  }
+
+  const date = new Date(dateString);
+
+  // Check if date is valid
+  if (isNaN(date.getTime())) {
+    console.warn('Invalid date string:', dateString);
+    return 'Unknown';
+  }
+
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  // Handle future dates or negative differences
+  if (diffInSeconds < 0) {
+    return 'Just now';
+  }
+
+  if (diffInSeconds < 60) {
+    return 'Just now';
+  }
+
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  if (diffInMinutes < 60) {
+    return `${diffInMinutes}m ago`;
+  }
+
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  if (diffInHours < 24) {
+    return `${diffInHours}h ago`;
+  }
+
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInDays < 30) {
+    return `${diffInDays}d ago`;
+  }
+
+  const diffInMonths = Math.floor(diffInDays / 30);
+  if (diffInMonths < 12) {
+    return `${diffInMonths}mo ago`;
+  }
+
+  const diffInYears = Math.floor(diffInMonths / 12);
+  return `${diffInYears}y ago`;
+}
+
 // Helper function to transform backend assessment to display format
 function transformAssessmentToDisplayFormat(backendAssessment: MentalHealthAssessment): {
   assessment: any;
@@ -16,7 +68,6 @@ function transformAssessmentToDisplayFormat(backendAssessment: MentalHealthAsses
 } {
   // Extract risk level from mental health score (backend sends 0-100)
   const getRiskLevel = (mental_health_score: number): 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL' => {
-    console.log('Mental Health Score:', mental_health_score);
     if (mental_health_score >= 90) return 'CRITICAL';
     if (mental_health_score >= 70) return 'HIGH';
     if (mental_health_score >= 40) return 'MODERATE';
@@ -24,18 +75,21 @@ function transformAssessmentToDisplayFormat(backendAssessment: MentalHealthAsses
   };
 
   // Transform assessment items to posts for display
-  const posts: Post[] = backendAssessment.items.map((item, index) => {
+  // Sort items by relevance score (highest first) before transforming
+  const sortedItems = [...backendAssessment.items].sort((a, b) => b.relevance_score - a.relevance_score);
+
+  const posts: Post[] = sortedItems.map((item, index) => {
     // Use the title from the API response directly
     const title = item.title || `${item.type === 'post' ? 'Post' : 'Comment'} in r/${item.subreddit}`;
     const content = item.content;
 
     return {
       id: `${item.type}_${index}`,
-      rank: index + 1,
+      rank: index + 1, // Rank based on sorted order
       tag: item.indicators[0] || 'general',
       tagColor: item.relevance_score > 8 ? 'bg-red-500' :
                 item.relevance_score > 6 ? 'bg-orange-500' : 'bg-yellow-500',
-      timestamp: 'Recent',
+      timestamp: formatRelativeTime(item.created_at),
       title,
       content,
       subreddit: `r/${item.subreddit}`,
@@ -43,8 +97,8 @@ function transformAssessmentToDisplayFormat(backendAssessment: MentalHealthAsses
       downvotes: Math.floor(Math.random() * 20),
       score: Math.floor(Math.random() * 80) + 10,
       comments: Math.floor(Math.random() * 50) + 5,
-      relevanceScore: Math.round(item.relevance_score * 10),
-      sentimentScore: -0.5 - (Math.random() * 0.5), // Assume negative for mental health content
+      relevanceScore: item.relevance_score,
+      sentimentScore: item.score.overall_score, // Use actual overall score from API
       concerns: item.indicators,
       postType: item.type === 'post' ? 'text' : 'text'
     };
@@ -63,7 +117,6 @@ function transformAssessmentToDisplayFormat(backendAssessment: MentalHealthAsses
     keyFindings: [
       ...backendAssessment.executive_summary.split('.').filter(s => s.trim().length > 0).slice(0, 2).map(s => s.trim() + '.'),
       `Analysis identified ${backendAssessment.items.length} relevant posts/comments`,
-      `Confidence level: ${Math.round(backendAssessment.confidence_score)}%`
     ],
     riskFactors: backendAssessment.items
       .filter(item => item.relevance_score > 6)
@@ -110,8 +163,6 @@ export const apiService = {
   async getUserProfile(username: string): Promise<APIResponse<any>> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/reddit/profile/${username}`);
-
-      console.log('response', response);
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -171,11 +222,21 @@ export const apiService = {
       };
     } catch (error) {
       console.error('Assessment fetch error:', error);
+
+      // Check if this is a rate limit error and preserve the detailed message
+      const errorMessage = error instanceof Error ? error.message : '';
+      const isRateLimit = errorMessage.includes('429') ||
+                         errorMessage.includes('502') ||
+                         errorMessage.toLowerCase().includes('rate limit') ||
+                         errorMessage.toLowerCase().includes('too many requests') ||
+                         errorMessage.toLowerCase().includes('rate_limit_error') ||
+                         errorMessage.toLowerCase().includes('claude api error: 429');
+
       return {
         success: false,
         error: {
-          code: 'ANALYSIS_FAILED',
-          message: 'Mental health assessment could not be completed',
+          code: isRateLimit ? 'RATE_LIMIT_ERROR' : 'ANALYSIS_FAILED',
+          message: isRateLimit ? errorMessage : 'Mental health assessment could not be completed',
           details: error
         }
       };

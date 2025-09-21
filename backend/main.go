@@ -27,13 +27,15 @@ type APIProfileResponse struct {
 }
 
 type EnrichedItem struct {
-	Type           string   `json:"type"` // "post" | "comment"
-	Subreddit      string   `json:"subreddit"`
-	Permalink      string   `json:"permalink"`
-	Content        string   `json:"content"`         // post content (title+selftext) or comment body
-	Score          MHScore  `json:"score"`           // external classifier scores
-	Indicators     []string `json:"indicators"`      // from Claude
-	RelevanceScore float64  `json:"relevance_score"` // from Claude
+	Type           string    `json:"type"` // "post" | "comment"
+	Subreddit      string    `json:"subreddit"`
+	Permalink      string    `json:"permalink"`
+	Title          string    `json:"title"`           // post title (empty for comments)
+	Content        string    `json:"content"`         // post selftext or comment body
+	CreatedAt      time.Time `json:"created_at"`      // when the post/comment was created
+	Score          MHScore   `json:"score"`           // external classifier scores
+	Indicators     []string  `json:"indicators"`      // from Claude
+	RelevanceScore float64   `json:"relevance_score"` // from Claude
 }
 
 type APIAssessmentResponse struct {

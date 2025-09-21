@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, MapPin, Calendar, Users, MessageCircle, ArrowUp, ArrowDown, Share, Brain, AlertTriangle, Activity, X, CheckCircle } from 'lucide-react';
+import { ArrowLeft, MapPin, Calendar, Users, MessageCircle, ArrowUp, ArrowDown, Share, Brain, AlertTriangle, Activity, X, CheckCircle, Clock } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card } from './ui/card';
@@ -35,9 +35,38 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Rate Limit State
+  const [isRateLimited, setIsRateLimited] = useState(false);
+  const [rateLimitTimer, setRateLimitTimer] = useState(0);
+  const [hasSearchedOnce, setHasSearchedOnce] = useState(false);
+
+  // Loading text cycling
+  const [loadingTextIndex, setLoadingTextIndex] = useState(0);
+  const loadingTexts = [
+    'Parsing post history',
+    'Analyzing social media patterns',
+    'Processing communication styles',
+    'Evaluating behavioral indicators',
+    'Identifying mental health signals',
+    'Assessing language patterns',
+  ];
+
+  // Start rate limit timer
+  const startRateLimitTimer = () => {
+    setIsRateLimited(true);
+    setRateLimitTimer(60);
+  };
+
   // Load initial data
   useEffect(() => {
     const abortController = new AbortController();
+
+    // Start rate limit timer for initial search
+    if (!hasSearchedOnce) {
+      setHasSearchedOnce(true);
+      startRateLimitTimer();
+    }
+
     loadAnalysisData(abortController.signal);
 
     return () => {
@@ -45,14 +74,15 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
     };
   }, [redditHandle]);
 
-  const loadAnalysisData = async (signal?: AbortSignal) => {
+  const loadAnalysisData = async (signal?: AbortSignal, username?: string) => {
+    const targetUsername = username || redditHandle;
     try {
       setLoading(true);
       setError(null);
       setStreamedText('');
 
       // Step 1: Get user profile
-      const userResponse = await apiService.getUserProfile(redditHandle);
+      const userResponse = await apiService.getUserProfile(targetUsername);
       if (signal?.aborted) return;
 
       if (!userResponse.success) {
@@ -64,7 +94,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
       if (signal?.aborted) return;
 
       const assessmentResponse = await apiService.createAssessment({
-        username: redditHandle,
+        username: targetUsername,
         analysisType: 'detailed',
         timeframe: '30d'
       });
@@ -106,7 +136,20 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
       setAiReport(reportResponse.data!);
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
+      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
+
+      // Check if it's a rate limit error (can come as 429, 502, or in message text)
+      if (errorMessage.includes('429') ||
+          errorMessage.includes('502') ||
+          errorMessage.toLowerCase().includes('rate limit') ||
+          errorMessage.toLowerCase().includes('too many requests') ||
+          errorMessage.toLowerCase().includes('rate_limit_error') ||
+          errorMessage.toLowerCase().includes('claude api error: 429')) {
+        startRateLimitTimer();
+        setError('Rate limit exceeded. API usage limit reached. Please wait before trying again.');
+      } else {
+        setError(errorMessage);
+      }
       setIsAnalyzing(false);
     } finally {
       setLoading(false);
@@ -140,18 +183,58 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
     return () => clearInterval(interval);
   }, [isAutoScrolling, assessment]);
 
+  // Rate limit timer effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isRateLimited && rateLimitTimer > 0) {
+      interval = setInterval(() => {
+        setRateLimitTimer(prev => {
+          if (prev <= 1) {
+            setIsRateLimited(false);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isRateLimited, rateLimitTimer]);
+
+  // Loading text cycling effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isAnalyzing) {
+      interval = setInterval(() => {
+        setLoadingTextIndex(prev => (prev + 1) % loadingTexts.length);
+      }, 3000); // Change text every 3 seconds
+    }
+    return () => clearInterval(interval);
+  }, [isAnalyzing, loadingTexts.length]);
+
   const handleSearchSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isRateLimited) return;
+
     if (searchHandle.trim() && searchHandle !== redditHandle) {
-      // Reset state and reload with new handle
+      // Start cooldown timer if this is the first search or after initial search
+      if (!hasSearchedOnce) {
+        setHasSearchedOnce(true);
+        startRateLimitTimer();
+      }
+
+      // Reset all state and reload with new handle
+      setUserProfile(null);
+      setAssessment(null);
+      setAiReport(null);
       setStreamedText('');
       setShowFindings(false);
       setFindingIndex(0);
       setSelectedPost(null);
       setIsAnalyzing(true);
+      setError(null);
 
       // In a real app, you'd update the URL/route here
-      await loadAnalysisData();
+      await loadAnalysisData(undefined, searchHandle);
     }
   };
 
@@ -214,65 +297,74 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
+      <header className="bg-white border-b border-gray-200 px-6 py-3">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-3">
               <Button
                 variant="ghost"
                 onClick={onBack}
                 className="p-2 hover:bg-gray-100 rounded-lg"
               >
-                <ArrowLeft className="w-5 h-5" />
+                <ArrowLeft className="w-4 h-4" />
               </Button>
               <div>
-                <h1 className="text-2xl font-semibold text-gray-900">Mental Health Screening Tool</h1>
-                <p className="text-gray-600">Analyze Reddit activity for mental health indicators to assist in medical screening</p>
+                <h1 className="text-xl font-semibold text-gray-900">MindScope AI</h1>
               </div>
             </div>
-          </div>
 
-          <form onSubmit={handleSearchSubmit} className="mt-6 max-w-md mx-auto">
-            <div className="flex space-x-2">
-              <Input
-                type="text"
-                placeholder="Username"
-                value={searchHandle}
-                onChange={(e) => setSearchHandle(e.target.value)}
-                className="flex-1 h-10 px-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <Button
-                type="submit"
-                className="px-6 h-10 bg-gray-900 hover:bg-gray-800 text-white rounded-lg"
-                disabled={loading}
-              >
-                Analyze
-              </Button>
+            <div className="flex items-center space-x-3">
+              {isRateLimited && (
+                <div className="flex items-center space-x-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg">
+                  <Clock className="w-4 h-4 text-orange-600" />
+                  <span className="text-sm font-medium text-orange-800">
+                    Cooldown: {Math.floor(rateLimitTimer / 60)}:{(rateLimitTimer % 60).toString().padStart(2, '0')}
+                  </span>
+                </div>
+              )}
+
+              <form onSubmit={handleSearchSubmit} className="flex space-x-2">
+                <Input
+                  type="text"
+                  placeholder="Username"
+                  value={searchHandle}
+                  onChange={(e) => setSearchHandle(e.target.value)}
+                  className="w-48 h-9 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={isRateLimited}
+                />
+                <Button
+                  type="submit"
+                  className="px-4 h-9 bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  disabled={loading || isRateLimited}
+                >
+                  Analyze
+                </Button>
+              </form>
             </div>
-          </form>
+          </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-7xl mx-auto px-6 py-4">
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Left Column - User Profile & Posts */}
           <div className="space-y-6">
             {/* User Profile Card */}
             {userProfile && (
-              <Card className="p-6 bg-white border border-gray-200 rounded-lg">
-                <div className="flex items-start space-x-4">
-                  {/* <ImageWithFallback
+              <Card className="p-4 bg-white border border-gray-200 rounded-lg">
+                <div className="flex items-start space-x-3">
+                  <ImageWithFallback
                     src={userProfile.profileImageUrl}
                     alt="User profile"
-                    className="w-16 h-16 rounded-full object-cover"
-                  /> */}
+                    className="w-12 h-12 rounded-full object-cover"
+                  />
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-gray-900">{userProfile.displayName}</h3>
                     <p className="text-gray-600">@{userProfile.username}</p>
                     <p className="text-gray-700 mt-2 text-sm">{userProfile.bio}</p>
 
-                    <div className="flex items-center space-x-4 mt-3 text-sm text-gray-600">
+                    <div className="flex items-center space-x-4 mt-2 text-sm text-gray-600">
                       {userProfile.location && (
                         <div className="flex items-center space-x-1">
                           <MapPin className="w-4 h-4" />
@@ -285,7 +377,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                       </div>
                     </div>
 
-                    <div className="flex items-center space-x-6 mt-3 text-sm">
+                    <div className="flex items-center space-x-6 mt-2 text-sm">
                       <span><strong>{userProfile.karma.toLocaleString()}</strong> <span className="text-gray-600">Karma</span></span>
                       <span><strong>{userProfile.postKarma.toLocaleString()}</strong> <span className="text-gray-600">Post Karma</span></span>
                       <span><strong>{userProfile.postsCount.toLocaleString()}</strong> <span className="text-gray-600">Posts</span></span>
@@ -305,7 +397,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
 
                 <div
                   ref={scrollContainerRef}
-                  className={`h-96 overflow-y-auto cursor-pointer ${isAutoScrolling ? 'no-scrollbar' : ''}`}
+                  className={`h-[440px] overflow-y-auto cursor-pointer ${isAutoScrolling ? 'no-scrollbar' : ''}`}
                   onWheel={() => setIsAutoScrolling(false)}
                   onTouchStart={() => setIsAutoScrolling(false)}
                   onMouseDown={() => setIsAutoScrolling(false)}
@@ -467,7 +559,22 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
               {isAnalyzing ? (
                 <div className="flex items-center space-x-3">
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                  <span className="text-gray-600">Analyzing social media patterns...</span>
+                  <div className="relative h-6 overflow-hidden w-64">
+                    <AnimatePresence mode="wait">
+                      <motion.div
+                        key={loadingTextIndex}
+                        initial={{ y: 12, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        exit={{ y: -12, opacity: 0 }}
+                        transition={{ duration: 0.5, ease: "easeInOut" }}
+                        className="absolute inset-0 flex items-center"
+                      >
+                        <span className="text-gray-600 text-sm">
+                          {loadingTexts[loadingTextIndex]}
+                        </span>
+                      </motion.div>
+                    </AnimatePresence>
+                  </div>
                 </div>
               ) : (
                 <div>
@@ -490,17 +597,17 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                   {assessment.keyFindings.slice(0, findingIndex).map((finding, index) => (
                     <div
                       key={index}
-                      className="flex items-start space-x-3 animate-in fade-in duration-500"
+                      className="flex items-start space-x-4 animate-in fade-in duration-500"
                       style={{ animationDelay: `${index * 100}ms` }}
                     >
-                      <div className="w-2 h-2 bg-blue-600 rounded-full mt-2"></div>
+                      <div className="w-2 h-2 bg-blue-600 rounded-full mt-1.5 flex-shrink-0"></div>
                       <p className="text-gray-700 text-sm">{finding}</p>
                     </div>
                   ))}
 
                   {showFindings && findingIndex < assessment.keyFindings.length && (
                     <div className="flex items-center space-x-2 animate-in fade-in duration-300">
-                      <div className="animate-pulse w-2 h-2 bg-gray-400 rounded-full"></div>
+                      <div className="animate-pulse w-2 h-2 bg-gray-400 rounded-full flex-shrink-0"></div>
                       <span className="text-gray-400 text-sm">Analyzing additional patterns...</span>
                     </div>
                   )}
@@ -583,7 +690,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                         {selectedPost.concerns?.map((concern, index) => (
                           <p key={index}>• {concern.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} detected</p>
                         ))}
-                        <p>• Sentiment score: {selectedPost.sentimentScore > 0 ? 'Positive' : selectedPost.sentimentScore < -0.5 ? 'Highly Negative' : 'Negative'}</p>
+                        <p>• Mental health risk: {selectedPost.sentimentScore === 0 ? 'No concern detected' : selectedPost.sentimentScore > 0.7 ? 'High risk' : selectedPost.sentimentScore > 0.4 ? 'Moderate risk' : 'Low risk'}</p>
                       </div>
                     </div>
                   </div>

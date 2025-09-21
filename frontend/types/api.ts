@@ -13,6 +13,7 @@ export interface AssessmentItem {
   permalink: string;
   title: string;
   content: string;
+  created_at: string;
   indicators: string[];
   relevance_score: number;
 }
