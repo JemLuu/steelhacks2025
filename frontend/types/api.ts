@@ -1,19 +1,32 @@
-// API Response Types
+// API Response Types matching backend
 export interface UserProfile {
-  id: string;
   username: string;
-  displayName: string;
+  icon_url: string;
+  total_karma: number;
   bio: string;
-  profileImageUrl: string;
-  location?: string;
-  joinDate: string;
-  karma: number;
-  postKarma: number;
-  commentKarma: number;
-  postsCount: number;
-  verified: boolean;
+  cake_day: string;
 }
 
+export interface AssessmentItem {
+  type: 'post' | 'comment';
+  subreddit: string;
+  permalink: string;
+  title: string;
+  content: string;
+  indicators: string[];
+  relevance_score: number;
+}
+
+export interface MentalHealthAssessment {
+  username: string;
+  model: string;
+  executive_summary: string;
+  confidence_score: number;
+  mental_health_score: number;
+  items: AssessmentItem[];
+}
+
+// Legacy interface - keeping for display logic
 export interface Post {
   id: string;
   rank: number;
@@ -33,46 +46,9 @@ export interface Post {
   postType: 'text' | 'link' | 'image';
 }
 
-export interface MentalHealthAssessment {
-  id: string;
-  userId: string;
-  username: string;
-  overallRiskLevel: 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL';
-  confidenceScore: number;
-  analysisDate: string;
-  keyFindings: string[];
-  riskFactors: RiskFactor[];
-  recommendations: string[];
-  posts: Post[];
-}
-
-export interface RiskFactor {
-  category: string;
-  severity: 'LOW' | 'MODERATE' | 'HIGH';
-  description: string;
-  evidence: string[];
-  frequency: number;
-}
-
-export interface AIReport {
-  id: string;
-  assessmentId: string;
-  executiveSummary: string;
-  detailedAnalysis: {
-    behavioralPatterns: string;
-    languageAnalysis: string;
-    temporalPatterns: string;
-    socialInteractionAnalysis: string;
-  };
-  clinicalRecommendations: string[];
-  followUpActions: string[];
-  generatedAt: string;
-}
-
+// Request/Response interfaces
 export interface AnalysisRequest {
   username: string;
-  analysisType?: 'standard' | 'detailed';
-  timeframe?: '7d' | '30d' | '90d';
 }
 
 export interface APIResponse<T> {

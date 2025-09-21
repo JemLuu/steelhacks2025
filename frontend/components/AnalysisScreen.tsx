@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, MapPin, Calendar, Users, MessageCircle, ArrowUp, ArrowDown, Share, Brain, AlertTriangle, Activity, X } from 'lucide-react';
+import { ArrowLeft, MapPin, Calendar, Users, MessageCircle, ArrowUp, ArrowDown, Share, Brain, AlertTriangle, Activity, X, CheckCircle } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card } from './ui/card';
@@ -24,6 +24,8 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
   const [findingIndex, setFindingIndex] = useState(0);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [isScrollingPaused, setIsScrollingPaused] = useState(false);
+  const [isAutoScrolling, setIsAutoScrolling] = useState(true);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const animationRef = useRef<any>(null);
 
   // API Data State
@@ -80,6 +82,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
       // Step 3: Get AI report with streaming
       const reportResponse = await apiService.getAIReport(
         assessmentResponse.data!.id,
+        assessmentResponse.data!.executiveSummary,
         (chunk: StreamingResponse) => {
           // Check if aborted before updating state
           if (signal?.aborted) return;
@@ -119,6 +122,23 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
       return () => clearTimeout(timer);
     }
   }, [showFindings, findingIndex, assessment?.keyFindings.length]);
+
+  // Autoscroll logic
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isAutoScrolling && scrollContainerRef.current) {
+      interval = setInterval(() => {
+        if (scrollContainerRef.current) {
+          if (scrollContainerRef.current.scrollTop + scrollContainerRef.current.clientHeight >= scrollContainerRef.current.scrollHeight) {
+            scrollContainerRef.current.scrollTop = 0;
+          } else {
+            scrollContainerRef.current.scrollTop += 1;
+          }
+        }
+      }, 50);
+    }
+    return () => clearInterval(interval);
+  }, [isAutoScrolling, assessment]);
 
   const handleSearchSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -242,11 +262,11 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
             {userProfile && (
               <Card className="p-6 bg-white border border-gray-200 rounded-lg">
                 <div className="flex items-start space-x-4">
-                  <ImageWithFallback
+                  {/* <ImageWithFallback
                     src={userProfile.profileImageUrl}
                     alt="User profile"
                     className="w-16 h-16 rounded-full object-cover"
-                  />
+                  /> */}
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-gray-900">{userProfile.displayName}</h3>
                     <p className="text-gray-600">@{userProfile.username}</p>
@@ -281,32 +301,22 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                 <div className="p-6 border-b border-gray-200">
                   <h3 className="text-lg font-semibold text-gray-900">Relevant Posts</h3>
                   <p className="text-gray-600">{assessment.posts.length} posts</p>
-                  {isScrollingPaused && (
-                    <p className="text-sm text-orange-600 mt-1">Scrolling paused - Click anywhere to resume</p>
-                  )}
                 </div>
 
                 <div
-                  className="h-96 overflow-hidden cursor-pointer"
+                  ref={scrollContainerRef}
+                  className={`h-96 overflow-y-auto cursor-pointer ${isAutoScrolling ? 'no-scrollbar' : ''}`}
+                  onWheel={() => setIsAutoScrolling(false)}
+                  onTouchStart={() => setIsAutoScrolling(false)}
+                  onMouseDown={() => setIsAutoScrolling(false)}
                   onClick={() => {
-                    if (isScrollingPaused) {
-                      setIsScrollingPaused(false);
-                    }
+                      if (!isAutoScrolling) {
+                          setIsAutoScrolling(true);
+                      }
                   }}
                 >
-                  <motion.div
-                    ref={animationRef}
-                    animate={isScrollingPaused ? {} : { y: [0, -120 * assessment.posts.length] }}
-                    transition={{
-                      duration: assessment.posts.length * 5,
-                      repeat: isScrollingPaused ? 0 : Infinity,
-                      ease: "linear",
-                      type: "tween"
-                    }}
-                    className="space-y-0"
-                    style={{ willChange: isScrollingPaused ? 'auto' : 'transform' }}
-                  >
-                    {[...assessment.posts, ...assessment.posts].map((post, index) => (
+                  <div className="space-y-0">
+                    {assessment.posts.map((post, index) => (
                       <div
                         key={`${post.id}-${index}`}
                         className="p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer min-h-[120px]"
@@ -352,7 +362,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                         </div>
                       </div>
                     ))}
-                  </motion.div>
+                  </div>
                 </div>
               </Card>
             )}
@@ -369,12 +379,21 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900">AI Mental Health Analysis</h3>
-                    <div className="flex items-center space-x-2 mt-1">
-                      <span className="text-sm text-gray-600">Confidence Level:</span>
-                      <div className="flex-1 max-w-24">
-                        <Progress value={assessment.confidenceScore} className="h-2" />
+                    <div className="space-y-2 mt-1">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm text-gray-600">Mental Risk:</span>
+                        <div className="flex-1 max-w-24">
+                          <Progress value={assessment.mental_health_score} className="h-2" />
+                        </div>
+                        <span className="text-sm font-medium text-gray-900">{assessment.mental_health_score}%</span>
                       </div>
-                      <span className="text-sm font-medium text-gray-900">{assessment.confidenceScore}%</span>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm text-gray-600">Confidence:</span>
+                        <div className="flex-1 max-w-24">
+                          <Progress value={assessment.confidenceScore} className="h-2" />
+                        </div>
+                        <span className="text-sm font-medium text-gray-900">{assessment.confidenceScore}%</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -385,21 +404,60 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
               </Card>
             )}
 
-            {/* Alert Box */}
-            {assessment && assessment.overallRiskLevel !== 'LOW' && (
-              <Card className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
-                <div className="flex items-start space-x-3">
-                  <AlertTriangle className="w-6 h-6 text-orange-600 mt-1" />
-                  <div>
-                    <h4 className="font-semibold text-orange-900">
-                      {assessment.overallRiskLevel === 'CRITICAL' ? 'Immediate Attention Required' : 'Clinical Review Recommended'}
-                    </h4>
-                    <p className="text-orange-800 text-sm mt-1">
-                      {assessment.riskFactors[0]?.description || 'Multiple risk factors detected requiring professional evaluation'}
-                    </p>
-                  </div>
-                </div>
-              </Card>
+            {/* Mental Health Evaluation Panel */}
+            {assessment && (
+              <>
+                {assessment.overallRiskLevel === 'LOW' && (
+                  <Card className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-start space-x-3">
+                      <CheckCircle className="w-6 h-6 text-green-600 mt-1" />
+                      <div>
+                        <h4 className="font-semibold text-green-900">
+                          Positive Mental Health Indicators
+                        </h4>
+                        <p className="text-green-800 text-sm mt-1">
+                          Analysis shows healthy communication patterns and positive engagement behaviors.
+                        </p>
+                      </div>
+                    </div>
+                  </Card>
+                )}
+
+                {assessment.overallRiskLevel === 'MODERATE' && (
+                  <Card className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-start space-x-3">
+                      <AlertTriangle className="w-6 h-6 text-yellow-600 mt-1" />
+                      <div>
+                        <h4 className="font-semibold text-yellow-900">
+                          Further Monitoring Recommended
+                        </h4>
+                        <p className="text-yellow-800 text-sm mt-1">
+                          Some concerning patterns detected. Consider periodic check-ins and continued observation.
+                        </p>
+                      </div>
+                    </div>
+                  </Card>
+                )}
+
+                {(assessment.overallRiskLevel === 'HIGH' || assessment.overallRiskLevel === 'CRITICAL') && (
+                  <Card className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="flex items-start space-x-3">
+                      <AlertTriangle className="w-6 h-6 text-red-600 mt-1" />
+                      <div>
+                        <h4 className="font-semibold text-red-900">
+                          {assessment.overallRiskLevel === 'CRITICAL' ? 'Immediate Professional Support Required' : 'Clinical Assessment Recommended'}
+                        </h4>
+                        <p className="text-red-800 text-sm mt-1">
+                          {assessment.overallRiskLevel === 'CRITICAL'
+                            ? 'Critical indicators detected. Immediate mental health professional consultation strongly advised.'
+                            : 'Multiple risk factors identified. Professional mental health evaluation recommended.'
+                          }
+                        </p>
+                      </div>
+                    </div>
+                  </Card>
+                )}
+              </>
             )}
 
             {/* Executive Summary */}
@@ -456,7 +514,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
       {/* Post Modal */}
       {selectedPost && (
         <Dialog open={true} onOpenChange={handleCloseModal}>
-          <DialogContent className="max-w-2xl mx-auto max-h-[90vh] overflow-y-auto">
+          <DialogContent className="!max-w-3xl !w-[90vw] mx-auto max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Post Analysis</DialogTitle>
             </DialogHeader>

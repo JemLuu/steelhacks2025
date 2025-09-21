@@ -45,7 +45,7 @@ type Listing struct {
 				NumComments int     `json:"num_comments"`
 				CreatedUTC  float64 `json:"created_utc"`
 			} `json:"data"`
-		} `json:"children"`
+		}
 	} `json:"data"`
 }
 

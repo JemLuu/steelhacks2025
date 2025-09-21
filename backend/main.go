@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 const postLimit = 1000
@@ -40,6 +44,20 @@ type APIAssessmentResponse struct {
 }
 
 func main() {
+	// Load environment variables from .env file
+	root, err := findProjectRoot()
+	if err != nil {
+		log.Printf("Warning: could not find project root: %v", err)
+	} else {
+		envPath := filepath.Join(root, ".env")
+		if err := godotenv.Overload(envPath); err != nil {
+			log.Printf("Warning: Could not load .env file from %s: %v", envPath, err)
+			log.Println("Falling back to system environment variables")
+		} else {
+			log.Printf("Successfully loaded .env file from %s", envPath)
+		}
+	}
+
 	mux := http.NewServeMux()
 
 	// health check
@@ -73,7 +91,7 @@ func main() {
 		port = "8080"
 	}
 	addr := ":" + port
-	fmt.Printf("🚀 listening on http://localhost%s\n", addr)
+fmt.Printf("🚀 listening on http://localhost%s\n", addr)
 	if err := http.ListenAndServe(addr, withCORS(mux)); err != nil {
 		panic(err)
 	}
@@ -133,4 +151,36 @@ func withCORS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// findProjectRoot searches for the project root directory by looking for a .git or .env file.
+func findProjectRoot() (string, error) {
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	dir := currentDir
+	for {
+		// Check for .git directory
+		gitDir := filepath.Join(dir, ".git")
+		if stat, err := os.Stat(gitDir); err == nil && stat.IsDir() {
+			return dir, nil
+		}
+
+		// Check for .env file
+		envFile := filepath.Join(dir, ".env")
+		if stat, err := os.Stat(envFile); err == nil && !stat.IsDir() {
+			return dir, nil
+		}
+
+		parentDir := filepath.Dir(dir)
+		if parentDir == dir {
+			// Reached the root of the filesystem
+			break
+		}
+		dir = parentDir
+	}
+
+	return "", fmt.Errorf("project root not found (searched for .git directory or .env file)")
 }
