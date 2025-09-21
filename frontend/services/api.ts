@@ -113,6 +113,7 @@ function transformAssessmentToDisplayFormat(backendAssessment: MentalHealthAsses
     overallRiskLevel: getRiskLevel(backendAssessment.mental_health_score),
     confidenceScore: Math.round(backendAssessment.confidence_score),
     mental_health_score: Math.round(backendAssessment.mental_health_score),
+    keyPoints: backendAssessment.key_points || [],
     analysisDate: new Date().toISOString(),
     keyFindings: [
       ...backendAssessment.executive_summary.split('.').filter(s => s.trim().length > 0).slice(0, 2).map(s => s.trim() + '.'),
@@ -189,7 +190,7 @@ export const apiService = {
   },
 
   // Post Count API
-  async getPostCount(username: string): Promise<APIResponse<{ post_count: number }>> {
+  async getPostCount(username: string): Promise<APIResponse<{ post_count: number; comment_count: number }>> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/reddit/postcount/${username}`);
 
@@ -201,7 +202,10 @@ export const apiService = {
 
       return {
         success: true,
-        data: { post_count: result.post_count }
+        data: {
+          post_count: result.post_count,
+          comment_count: result.comment_count
+        }
       };
     } catch (error) {
       console.error('Post count fetch error:', error);

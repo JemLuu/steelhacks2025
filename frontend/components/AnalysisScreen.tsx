@@ -31,6 +31,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
   // API Data State
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [postCount, setPostCount] = useState<number | null>(null);
+  const [commentCount, setCommentCount] = useState<number | null>(null);
   const [assessment, setAssessment] = useState<MentalHealthAssessment | null>(null);
   const [aiReport, setAiReport] = useState<AIReport | null>(null);
   const [loading, setLoading] = useState(true);
@@ -95,10 +96,12 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
       apiService.getPostCount(targetUsername).then(postCountResponse => {
         if (!signal?.aborted && postCountResponse.success) {
           setPostCount(postCountResponse.data!.post_count);
+          setCommentCount(postCountResponse.data!.comment_count);
         }
       }).catch(err => {
         console.warn('Post count fetch failed:', err);
         setPostCount(0); // Default fallback
+        setCommentCount(0);
       });
 
       // Step 2: Create mental health assessment
@@ -236,6 +239,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
       // Reset all state and reload with new handle
       setUserProfile(null);
       setPostCount(null);
+      setCommentCount(null);
       setAssessment(null);
       setAiReport(null);
       setStreamedText('');
@@ -392,6 +396,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                     <div className="flex items-center space-x-6 mt-2 text-sm">
                       <span><strong>{userProfile.karma.toLocaleString()}</strong> <span className="text-gray-600">Karma</span></span>
                       <span><strong>{postCount !== null ? postCount.toLocaleString() : '...'}</strong> <span className="text-gray-600">Posts</span></span>
+                      <span><strong>{commentCount !== null ? commentCount.toLocaleString() : '...'}</strong> <span className="text-gray-600">Comments</span></span>
                     </div>
                   </div>
                 </div>
@@ -507,6 +512,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
               </Card>
             )}
 
+
             {/* Mental Health Evaluation Panel */}
             {assessment && (
               <>
@@ -599,29 +605,21 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
               )}
             </Card>
 
-            {/* Key Findings */}
-            {assessment && (
+            
+            {/* Key Points */}
+            {assessment && assessment.keyPoints && assessment.keyPoints.length > 0 && (
               <Card className="p-6 bg-white border border-gray-200 rounded-lg">
-                <h4 className="font-semibold text-gray-900 mb-4">Key Findings</h4>
-
+                <h4 className="font-semibold text-gray-900 mb-4">Key Insights</h4>
                 <div className="space-y-3">
-                  {assessment.keyFindings.slice(0, findingIndex).map((finding, index) => (
+                  {assessment.keyPoints.map((point, index) => (
                     <div
                       key={index}
-                      className="flex items-start space-x-4 animate-in fade-in duration-500"
-                      style={{ animationDelay: `${index * 100}ms` }}
+                      className="flex items-start space-x-3"
                     >
-                      <div className="w-2 h-2 bg-blue-600 rounded-full mt-1.5 flex-shrink-0"></div>
-                      <p className="text-gray-700 text-sm">{finding}</p>
+                      <div className="w-2 h-2 bg-blue-600 rounded-full mt-2 flex-shrink-0"></div>
+                      <p className="text-gray-700 text-sm font-medium">{point}</p>
                     </div>
                   ))}
-
-                  {showFindings && findingIndex < assessment.keyFindings.length && (
-                    <div className="flex items-center space-x-2 animate-in fade-in duration-300">
-                      <div className="animate-pulse w-2 h-2 bg-gray-400 rounded-full flex-shrink-0"></div>
-                      <span className="text-gray-400 text-sm">Analyzing additional patterns...</span>
-                    </div>
-                  )}
                 </div>
               </Card>
             )}

@@ -24,6 +24,7 @@ export interface MentalHealthAssessment {
   executive_summary: string;
   confidence_score: number;
   mental_health_score: number;
+  key_points: string[];
   items: AssessmentItem[];
 }
 

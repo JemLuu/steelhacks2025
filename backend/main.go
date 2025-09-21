@@ -27,8 +27,8 @@ type APIProfileResponse struct {
 }
 
 type APIPostCountResponse struct {
-	PostCount     int `json:"post_count"`
-	CommentsCount int `json:"comments_count"`
+	PostCount    int `json:"post_count"`
+	CommentCount int `json:"comment_count"`
 }
 
 type EnrichedItem struct {
@@ -148,8 +148,8 @@ func handlePostCount(w http.ResponseWriter, r *http.Request, username string) {
 	}
 
 	out := APIPostCountResponse{
-		PostCount:     len(posts.Posts),
-		CommentsCount: len(posts.Comments),
+		PostCount:    len(posts.Posts),
+		CommentCount: len(posts.Comments),
 	}
 	writeJSON(w, http.StatusOK, out)
 }
