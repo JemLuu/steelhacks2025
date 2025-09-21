@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 const postLimit = 1000
@@ -22,15 +26,41 @@ type APIProfileResponse struct {
 	CakeDay    time.Time `json:"cake_day"`
 }
 
+type EnrichedItem struct {
+	Type           string    `json:"type"` // "post" | "comment"
+	Subreddit      string    `json:"subreddit"`
+	Permalink      string    `json:"permalink"`
+	Title          string    `json:"title"`           // post title (empty for comments)
+	Content        string    `json:"content"`         // post selftext or comment body
+	CreatedAt      time.Time `json:"created_at"`      // when the post/comment was created
+	Score          MHScore   `json:"score"`           // external classifier scores
+	Indicators     []string  `json:"indicators"`      // from Claude
+	RelevanceScore float64   `json:"relevance_score"` // from Claude
+}
+
 type APIAssessmentResponse struct {
-	Username         string           `json:"username"`
-	Model            string           `json:"model"`
-	ExecutiveSummary string           `json:"executive_summary"`
-	ConfidenceScore  float64          `json:"confidence_score"`
-	Items            []AssessmentItem `json:"items"`
+	ExecutiveSummary  string         `json:"executive_summary"`
+	ConfidenceScore   float64        `json:"confidence_score"`
+	MentalHealthScore float64        `json:"mental_health_score"`
+	PostsCount        int            `json:"posts_count"`
+	Items             []EnrichedItem `json:"items"`
 }
 
 func main() {
+	// Load environment variables from .env file
+	root, err := findProjectRoot()
+	if err != nil {
+		log.Printf("Warning: could not find project root: %v", err)
+	} else {
+		envPath := filepath.Join(root, ".env")
+		if err := godotenv.Overload(envPath); err != nil {
+			log.Printf("Warning: Could not load .env file from %s: %v", envPath, err)
+			log.Println("Falling back to system environment variables")
+		} else {
+			log.Printf("Successfully loaded .env file from %s", envPath)
+		}
+	}
+
 	mux := http.NewServeMux()
 
 	// health check
@@ -56,16 +86,6 @@ func main() {
 			return
 		}
 		handleAssessment(w, r, username)
-	})
-
-	// prediction endpoint: /api/reddit/predict/{username}
-	mux.HandleFunc("/api/reddit/predict/", func(w http.ResponseWriter, r *http.Request) {
-		username := r.URL.Path[len("/api/reddit/predict/"):]
-		if username == "" {
-			http.Error(w, "username required", http.StatusBadRequest)
-			return
-		}
-		handlePredict(w, r, username)
 	})
 
 	// server
@@ -103,60 +123,16 @@ func handleProfile(w http.ResponseWriter, r *http.Request, username string) {
 }
 
 func handleAssessment(w http.ResponseWriter, r *http.Request, username string) {
-	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 500*time.Second)
 	defer cancel()
 
-	content, err := GetRedditUserPosts(ctx, username, postLimit, commentLimit)
+	// Orchestrate: scrape -> predict per item -> Claude (permalinks only) -> enrich
+	resp, err := OrchestrateAssessment(ctx, username, postLimit, commentLimit)
 	if err != nil {
-		http.Error(w, "failed to fetch posts/comments: "+err.Error(), http.StatusBadGateway)
+		http.Error(w, "assessment failed: "+err.Error(), http.StatusBadGateway)
 		return
 	}
-
-	parsed, err := SendContentToClaude(ctx, content)
-	if err != nil {
-		http.Error(w, "Claude analysis failed: "+err.Error(), http.StatusBadGateway)
-		return
-	}
-
-	model := os.Getenv("CLAUDE_MODEL")
-	if model == "" {
-		model = "claude-sonnet-4-20250514"
-	}
-
-	writeJSON(w, http.StatusOK, APIAssessmentResponse{
-		Username:         username,
-		Model:            model,
-		ExecutiveSummary: parsed.ExecutiveSummary,
-		ConfidenceScore:  parsed.ConfidenceScore,
-		Items:            parsed.Items,
-	})
-}
-
-func handlePredict(w http.ResponseWriter, r *http.Request, username string) {
-	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
-	defer cancel()
-
-	content, err := GetRedditUserPosts(ctx, username, postLimit, commentLimit)
-	if err != nil {
-		http.Error(w, "failed to fetch posts/comments: "+err.Error(), http.StatusBadGateway)
-		return
-	}
-
-	items, err := PredictSequential(ctx, content)
-	if err != nil {
-		http.Error(w, "prediction failed: "+err.Error(), http.StatusBadGateway)
-		return
-	}
-
-	writeJSON(w, http.StatusOK, struct {
-		Username string           `json:"username"`
-		Count    int              `json:"count"`
-		Items    []ClassifiedItem `json:"items"`
-	}{
-		Username: username,
-		Count:    len(items),
-		Items:    items,
-	})
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // ----- helpers -----
@@ -178,4 +154,36 @@ func withCORS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// findProjectRoot searches for the project root directory by looking for a .git or .env file.
+func findProjectRoot() (string, error) {
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	dir := currentDir
+	for {
+		// Check for .git directory
+		gitDir := filepath.Join(dir, ".git")
+		if stat, err := os.Stat(gitDir); err == nil && stat.IsDir() {
+			return dir, nil
+		}
+
+		// Check for .env file
+		envFile := filepath.Join(dir, ".env")
+		if stat, err := os.Stat(envFile); err == nil && !stat.IsDir() {
+			return dir, nil
+		}
+
+		parentDir := filepath.Dir(dir)
+		if parentDir == dir {
+			// Reached the root of the filesystem
+			break
+		}
+		dir = parentDir
+	}
+
+	return "", fmt.Errorf("project root not found (searched for .git directory or .env file)")
 }

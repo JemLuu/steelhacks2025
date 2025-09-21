@@ -180,7 +180,7 @@ export default function LandingPage({ onAnalyze }: LandingPageProps) {
 
       {/* Hero Section */}
       <section id="home" className="relative min-h-screen flex items-center justify-center px-6">
-        <div className="container mx-auto text-center">
+        <div className="container mx-auto text-center w-1/2 md:w-2/3 sm:w-3/4">
           <motion.h1
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -268,86 +268,6 @@ export default function LandingPage({ onAnalyze }: LandingPageProps) {
         </div>
       </section>
 
-      {/* Social Proof Section */}
-      <section className="py-20 px-6">
-        <div className="container mx-auto">
-          <motion.h2
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-3xl md:text-4xl font-bold text-center mb-4 text-white"
-          >
-            Trusted by Mental Health Professionals
-          </motion.h2>
-          
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: 0.2 }}
-            className="text-gray-300 text-center mb-16 max-w-2xl mx-auto"
-          >
-            Leading healthcare institutions rely on MindScope AI for early detection and intervention
-          </motion.p>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            {testimonials.map((testimonial, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: index * 0.2 }}
-              >
-                <Card className="p-6 bg-white/5 backdrop-blur-md border border-white/10 hover:bg-white/10 transition-all duration-300">
-                  <div className="flex items-center mb-4">
-                    <ImageWithFallback
-                      src={testimonial.image}
-                      alt={testimonial.name}
-                      className="w-12 h-12 rounded-full object-cover mr-4"
-                    />
-                    <div>
-                      <h4 className="font-semibold text-white">{testimonial.name}</h4>
-                      <p className="text-sm text-gray-400">{testimonial.role}</p>
-                    </div>
-                  </div>
-                  <p className="text-gray-300 italic">"{testimonial.content}"</p>
-                  <div className="flex mt-4">
-                    {[...Array(5)].map((_, i) => (
-                      <Star key={i} className="w-4 h-4 text-yellow-400 fill-current" />
-                    ))}
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Statistics Section */}
-      <section className="py-20 px-6 relative">
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 backdrop-blur-sm"></div>
-        <div className="container mx-auto relative">
-          <div className="grid md:grid-cols-3 gap-8 text-center">
-            {stats.map((stat, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, scale: 0.8 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: index * 0.2 }}
-              >
-                <div className="mb-4">
-                  <div className="text-5xl md:text-6xl font-black bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent mb-2">
-                    {stat.number}
-                  </div>
-                  <p className="text-xl text-gray-300">{stat.label}</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
 
       {/* CTA Section */}
       <section className="py-20 px-6">
@@ -370,31 +290,6 @@ export default function LandingPage({ onAnalyze }: LandingPageProps) {
           >
             Start your free analysis today and discover what social media reveals about mental health
           </motion.p>
-
-          <motion.form
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: 0.4 }}
-            onSubmit={handleCtaSubmit}
-            className="max-w-md mx-auto mb-8"
-          >
-            <div className="relative">
-              <Input
-                type="text"
-                placeholder="@username"
-                value={ctaHandle}
-                onChange={(e) => setCtaHandle(e.target.value)}
-                className="w-full h-14 px-6 text-lg bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500/50 focus:border-transparent"
-              />
-              <Button
-                type="submit"
-                className="absolute right-2 top-2 h-10 px-6 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl font-semibold text-white border-0 shadow-lg"
-              >
-                Analyze Now
-              </Button>
-            </div>
-          </motion.form>
 
           <motion.div
             initial={{ opacity: 0 }}
