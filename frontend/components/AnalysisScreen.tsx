@@ -413,7 +413,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                 <ArrowLeft className="w-4 h-4 text-gray-700 dark:text-gray-300" />
               </Button>
               <div>
-                <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Beacon</h1>
+                <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">Beacon</h1>
               </div>
             </div>
 
@@ -563,7 +563,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
 
                 <div
                   ref={scrollContainerRef}
-                  className={`h-[440px] overflow-y-auto overflow-x-hidden cursor-pointer ${isAutoScrolling ? 'no-scrollbar' : ''}`}
+                  className="h-[440px] overflow-y-auto overflow-x-hidden cursor-pointer no-scrollbar"
                   onWheel={() => setIsAutoScrolling(false)}
                   onTouchStart={() => setIsAutoScrolling(false)}
                   onMouseDown={() => setIsAutoScrolling(false)}
@@ -639,7 +639,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
             transition={{ duration: 0.6, delay: 0.9 }}
             className="mt-6"
           >
-            <div className="bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-800 dark:to-blue-900/30 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 shadow-lg">
+            <div className="bg-gradient-to-br from-slate-50 to-gray-100 dark:from-slate-800/40 dark:to-gray-800/30 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 shadow-lg">
               <div className="flex items-center space-x-3 mb-5">
                 <div className="bg-gradient-to-br from-blue-500 to-purple-600 p-2.5 rounded-xl shadow-md">
                   <Brain className="w-5 h-5 text-white" />
@@ -659,8 +659,14 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                   const averages = categories.map(category => {
                     const sum = postsWithScores.reduce((acc, post) => acc + post.mentalHealthScore![category as keyof typeof post.mentalHealthScore], 0);
                     const avg = sum / postsWithScores.length;
+                    let label = category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+                    // Hardcode special cases for capitalization
+                    if (category === 'adhd') label = 'ADHD';
+                    if (category === 'ptsd') label = 'PTSD';
+
                     return {
-                      label: category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                      label: label,
                       value: avg,
                       percentage: Math.round(avg * 100)
                     };
@@ -871,7 +877,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
 
                     <div className="relative z-10">
                       <div className="flex items-center space-x-3 mb-4">
-                        <div className="flex items-center justify-center w-12 h-12 bg-red-600 rounded-xl shadow-lg animate-pulse">
+                        <div className="flex items-center justify-center w-12 h-12 bg-red-600 rounded-xl shadow-lg">
                           <AlertTriangle className="w-7 h-7 text-white" />
                         </div>
                         <div>
@@ -1098,7 +1104,12 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                     <div className="space-y-3">
                       {Object.entries(selectedPost.mentalHealthScore).map(([key, value], index) => {
                         if (key === 'overall_score') return null;
-                        const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                        let label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+                        // Hardcode special cases for capitalization
+                        if (key === 'adhd') label = 'ADHD';
+                        if (key === 'ptsd') label = 'PTSD';
+
                         const percentage = Math.round(value * 100);
                         const getBarColor = (score: number) => {
                           if (score < 0.3) return 'bg-gradient-to-r from-green-400 to-green-500';
