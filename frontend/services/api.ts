@@ -100,7 +100,8 @@ function transformAssessmentToDisplayFormat(backendAssessment: MentalHealthAsses
       relevanceScore: item.relevance_score,
       sentimentScore: item.score.overall_score, // Use actual overall score from API
       concerns: item.indicators,
-      postType: item.type === 'post' ? 'text' : 'text'
+      postType: item.type === 'post' ? 'text' : 'text',
+      mentalHealthScore: item.score // Include the mental health scores
     };
   });
 
@@ -145,7 +146,8 @@ function transformProfileToDisplayFormat(backendProfile: UserProfile): any {
   return {
     id: 'user_' + Date.now(),
     username: backendProfile.username,
-    displayName: backendProfile.username,
+    displayName: backendProfile.nickname || backendProfile.username,
+    nickname: backendProfile.nickname,
     bio: backendProfile.bio || 'No bio available',
     profileImageUrl: backendProfile.icon_url || 'https://picsum.photos/400/400',
     location: undefined,

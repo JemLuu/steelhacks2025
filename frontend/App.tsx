@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import LandingPage from './components/LandingPage';
 import AnalysisScreen from './components/AnalysisScreen';
+import { ThemeProvider } from './contexts/ThemeContext';
 
 export default function App() {
   // Main application component
@@ -18,15 +19,17 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen">
-      {currentScreen === 'landing' ? (
-        <LandingPage onAnalyze={handleAnalyze} />
-      ) : (
-        <AnalysisScreen
-          redditHandle={redditHandle}
-          onBack={handleBackToLanding}
-        />
-      )}
-    </div>
+    <ThemeProvider>
+      <div className="min-h-screen">
+        {currentScreen === 'landing' ? (
+          <LandingPage onAnalyze={handleAnalyze} />
+        ) : (
+          <AnalysisScreen
+            redditHandle={redditHandle}
+            onBack={handleBackToLanding}
+          />
+        )}
+      </div>
+    </ThemeProvider>
   );
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, MapPin, Calendar, Users, MessageCircle, ArrowUp, ArrowDown, Share, Brain, AlertTriangle, Activity, X, CheckCircle, Clock } from 'lucide-react';
+import { motion, AnimatePresence, useInView } from 'motion/react';
+import { ArrowLeft, MapPin, Calendar, Users, MessageCircle, ArrowUp, ArrowDown, Share, Brain, AlertTriangle, Activity, X, CheckCircle, Clock, Moon, Sun } from 'lucide-react';
+import { useTheme } from '../contexts/ThemeContext';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card } from './ui/card';
@@ -9,7 +10,7 @@ import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { apiService } from '../services/api';
-import { UserProfile, MentalHealthAssessment, AIReport, Post, StreamingResponse } from '../types/api';
+import { UserProfile, MentalHealthAssessment, AIReport, Post, StreamingResponse, MentalHealthScore } from '../types/api';
 
 interface AnalysisScreenProps {
   redditHandle: string;
@@ -17,6 +18,7 @@ interface AnalysisScreenProps {
 }
 
 export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenProps) {
+  const { theme, toggleTheme } = useTheme();
   const [searchHandle, setSearchHandle] = useState(redditHandle);
   const [isAnalyzing, setIsAnalyzing] = useState(true);
   const [streamedText, setStreamedText] = useState('');
@@ -25,6 +27,12 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
   const [streamedKeyPoints, setStreamedKeyPoints] = useState<string[]>([]);
   const [isStreamingKeyPoints, setIsStreamingKeyPoints] = useState(false);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+
+  // Animation states for progressive reveal
+  const [showUserProfile, setShowUserProfile] = useState(false);
+  const [showAnalysisHeader, setShowAnalysisHeader] = useState(false);
+  const [showPostsList, setShowPostsList] = useState(false);
+  const [showExecutiveSummary, setShowExecutiveSummary] = useState(false);
   const [isScrollingPaused, setIsScrollingPaused] = useState(false);
   const [isAutoScrolling, setIsAutoScrolling] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -43,6 +51,10 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
   const [isRateLimited, setIsRateLimited] = useState(false);
   const [rateLimitTimer, setRateLimitTimer] = useState(0);
   const [hasSearchedOnce, setHasSearchedOnce] = useState(false);
+
+  // Animation refs for viewport triggers
+  const categoryAnalysisRef = useRef(null);
+  const isCategoryAnalysisInView = useInView(categoryAnalysisRef, { once: true, amount: 0.3 });
 
   // Loading text cycling
   const [loadingTextIndex, setLoadingTextIndex] = useState(0);
@@ -87,6 +99,12 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
       setStreamedKeyPoints([]);
       setIsStreamingKeyPoints(false);
 
+      // Reset animation states
+      setShowUserProfile(false);
+      setShowAnalysisHeader(false);
+      setShowPostsList(false);
+      setShowExecutiveSummary(false);
+
       // Step 1: Get user profile
       const userResponse = await apiService.getUserProfile(targetUsername);
       if (signal?.aborted) return;
@@ -95,6 +113,11 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
         throw new Error(userResponse.error?.message || 'Failed to load user profile');
       }
       setUserProfile(userResponse.data!);
+
+      // Start progressive reveal - User Profile appears first
+      setTimeout(() => {
+        if (!signal?.aborted) setShowUserProfile(true);
+      }, 300);
 
       // Step 1.5: Get post count (async, don't block)
       apiService.getPostCount(targetUsername).then(postCountResponse => {
@@ -107,6 +130,11 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
         setPostCount(0); // Default fallback
         setCommentCount(0);
       });
+
+      // Executive Summary shows up during analysis to show loading indicator
+      setTimeout(() => {
+        if (!signal?.aborted) setShowExecutiveSummary(true);
+      }, 500);
 
       // Step 2: Create mental health assessment
       if (signal?.aborted) return;
@@ -123,6 +151,15 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
 
       setAssessment(assessmentResponse.data!);
       setIsAnalyzing(false);
+
+      // Progressive reveal sequence
+      setTimeout(() => {
+        if (!signal?.aborted) setShowAnalysisHeader(true);
+      }, 600);
+
+      setTimeout(() => {
+        if (!signal?.aborted) setShowPostsList(true);
+      }, 900);
 
       // Check if aborted before streaming
       if (signal?.aborted) return;
@@ -290,6 +327,12 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
       setIsAnalyzing(true);
       setError(null);
 
+      // Reset animation states for new search
+      setShowUserProfile(false);
+      setShowAnalysisHeader(false);
+      setShowPostsList(false);
+      setShowExecutiveSummary(false);
+
       // In a real app, you'd update the URL/route here
       await loadAnalysisData(undefined, searchHandle);
     }
@@ -325,10 +368,10 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
 
   if (loading && !userProfile) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading user profile...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400 mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-300">Loading user profile...</p>
         </div>
       </div>
     );
@@ -336,13 +379,17 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Card className="p-6 max-w-md mx-auto">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <Card className="p-6 max-w-md mx-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
           <div className="text-center">
-            <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Analysis Error</h3>
-            <p className="text-gray-600 mb-4">{error}</p>
-            <Button onClick={onBack} variant="outline">
+            <AlertTriangle className="w-12 h-12 text-red-500 dark:text-red-400 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Analysis Error</h3>
+            <p className="text-gray-600 dark:text-gray-300 mb-4">{error}</p>
+            <Button
+              onClick={onBack}
+              variant="outline"
+              className="border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+            >
               Back to Landing
             </Button>
           </div>
@@ -352,29 +399,41 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-3">
+      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <Button
                 variant="ghost"
                 onClick={onBack}
-                className="p-2 hover:bg-gray-100 rounded-lg"
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
               >
-                <ArrowLeft className="w-4 h-4" />
+                <ArrowLeft className="w-4 h-4 text-gray-700 dark:text-gray-300" />
               </Button>
               <div>
-                <h1 className="text-xl font-semibold text-gray-900">MindScope AI</h1>
+                <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Mindful</h1>
               </div>
             </div>
 
             <div className="flex items-center space-x-3">
+              <Button
+                variant="ghost"
+                onClick={toggleTheme}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+              >
+                {theme === 'light' ? (
+                  <Moon className="w-4 h-4 text-gray-700 dark:text-gray-300" />
+                ) : (
+                  <Sun className="w-4 h-4 text-gray-700 dark:text-gray-300" />
+                )}
+              </Button>
+
               {isRateLimited && (
-                <div className="flex items-center space-x-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg">
-                  <Clock className="w-4 h-4 text-orange-600" />
-                  <span className="text-sm font-medium text-orange-800">
+                <div className="flex items-center space-x-2 px-3 py-2 bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-700 rounded-lg">
+                  <Clock className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+                  <span className="text-sm font-medium text-orange-800 dark:text-orange-300">
                     Cooldown: {Math.floor(rateLimitTimer / 60)}:{(rateLimitTimer % 60).toString().padStart(2, '0')}
                   </span>
                 </div>
@@ -386,12 +445,12 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                   placeholder="Username"
                   value={searchHandle}
                   onChange={(e) => setSearchHandle(e.target.value)}
-                  className="w-48 h-9 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-48 h-9 px-3 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   disabled={isRateLimited}
                 />
                 <Button
                   type="submit"
-                  className="px-4 h-9 bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  className="px-4 h-9 bg-gray-900 hover:bg-gray-800 dark:bg-gray-100 dark:hover:bg-gray-200 text-white dark:text-gray-900 rounded-lg text-sm disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed"
                   disabled={loading || isRateLimited}
                 >
                   Analyze
@@ -403,53 +462,95 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-4">
+      <main className="max-w-7xl mx-auto px-6 py-4 pb-12">
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Left Column - User Profile & Posts */}
           <div className="space-y-6">
+            {/* Loading skeleton for user profile */}
+            {!showUserProfile && userProfile && (
+              <motion.div
+                initial={{ opacity: 1 }}
+                animate={{ opacity: 1 }}
+                className="h-32 bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 rounded-lg animate-pulse"
+              />
+            )}
             {/* User Profile Card */}
-            {userProfile && (
-              <Card className="p-4 bg-white border border-gray-200 rounded-lg">
-                <div className="flex items-start space-x-3">
-                  <ImageWithFallback
-                    src={userProfile.profileImageUrl}
-                    alt="User profile"
-                    className="w-12 h-12 rounded-full object-cover"
-                  />
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900">{userProfile.displayName}</h3>
-                    <p className="text-gray-600">@{userProfile.username}</p>
-                    <p className="text-gray-700 mt-2 text-sm">{userProfile.bio}</p>
+            {userProfile && showUserProfile && (
+              <motion.div
+                initial={{ opacity: 0, y: 30, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.6, ease: "easeOut" }}
+              >
+                <Card className="p-4 bg-gradient-to-br from-orange-50 to-amber-100 dark:from-orange-900/30 dark:to-amber-900/20 border border-orange-200 dark:border-orange-800 rounded-lg relative overflow-hidden">
+                {/* Background decoration */}
+                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-orange-200/30 dark:from-orange-700/20 to-transparent rounded-full -translate-y-10 translate-x-10"></div>
+                <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-amber-200/20 dark:from-amber-700/10 to-transparent rounded-full translate-y-8 -translate-x-8"></div>
 
-                    <div className="flex items-center space-x-4 mt-2 text-sm text-gray-600">
-                      {userProfile.location && (
-                        <div className="flex items-center space-x-1">
-                          <MapPin className="w-4 h-4" />
-                          <span>{userProfile.location}</span>
-                        </div>
-                      )}
-                      <div className="flex items-center space-x-1">
-                        <Calendar className="w-4 h-4" />
-                        <span>{new Date(userProfile.joinDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span>
-                      </div>
+                <div className="relative z-10">
+                  <div className="flex items-start space-x-3">
+                    <div className="relative">
+                      <ImageWithFallback
+                        src={userProfile.profileImageUrl}
+                        alt="User profile"
+                        className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm"
+                      />
+                      <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-orange-500 rounded-full border-2 border-white dark:border-gray-800"></div>
                     </div>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-semibold text-orange-900 dark:text-orange-100">{userProfile.displayName}</h3>
+                      <p className="text-orange-700 dark:text-orange-300">@{userProfile.username}</p>
+                      <div className="bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm rounded-lg p-3 mt-2 border border-white/50 dark:border-gray-700/50">
+                        <p className="text-gray-800 dark:text-gray-200 text-sm font-medium">{userProfile.bio}</p>
 
-                    <div className="flex items-center space-x-6 mt-2 text-sm">
-                      <span><strong>{userProfile.karma.toLocaleString()}</strong> <span className="text-gray-600">Karma</span></span>
-                      <span><strong>{postCount !== null ? postCount.toLocaleString() : '...'}</strong> <span className="text-gray-600">Posts</span></span>
-                      <span><strong>{commentCount !== null ? commentCount.toLocaleString() : '...'}</strong> <span className="text-gray-600">Comments</span></span>
+                        <div className="flex items-center space-x-4 mt-2 text-sm text-orange-800 dark:text-orange-300">
+                          {userProfile.location && (
+                            <div className="flex items-center space-x-1">
+                              <MapPin className="w-4 h-4" />
+                              <span>{userProfile.location}</span>
+                            </div>
+                          )}
+                          <div className="flex items-center space-x-1">
+                            <Calendar className="w-4 h-4" />
+                            <span>{new Date(userProfile.joinDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-6 mt-2 text-sm">
+                          <span><strong className="text-orange-900 dark:text-orange-100">{userProfile.karma.toLocaleString()}</strong> <span className="text-orange-700 dark:text-orange-300">Karma</span></span>
+                          <span><strong className="text-orange-900 dark:text-orange-100">{postCount !== null ? postCount.toLocaleString() : '...'}</strong> <span className="text-orange-700 dark:text-orange-300">Posts</span></span>
+                          <span><strong className="text-orange-900 dark:text-orange-100">{commentCount !== null ? commentCount.toLocaleString() : '...'}</strong> <span className="text-orange-700 dark:text-orange-300">Comments</span></span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </Card>
+              </motion.div>
             )}
 
-            {/* Relevant Tweets */}
-            {assessment && (
-              <Card className="bg-white border border-gray-200 rounded-lg">
-                <div className="p-6 border-b border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-900">Relevant Posts</h3>
-                  <p className="text-gray-600">{assessment.posts.length} posts</p>
+            {/* Relevant Posts */}
+            {assessment && showPostsList && (
+              <motion.div
+                initial={{ opacity: 0, x: -50 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.7, ease: "easeOut" }}
+              >
+                <Card className="bg-gradient-to-br from-slate-50 to-gray-100 dark:from-slate-800/40 dark:to-gray-800/30 border border-slate-200 dark:border-slate-700 rounded-lg relative overflow-hidden">
+                {/* Background decoration */}
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-slate-200/30 dark:from-slate-600/20 to-transparent rounded-full -translate-y-16 translate-x-16"></div>
+
+                <div className="relative z-10">
+                  <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center space-x-3">
+                      <div className="flex items-center justify-center w-8 h-8 bg-slate-600 dark:bg-slate-500 rounded-lg">
+                        <Users className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Relevant Posts</h3>
+                        <p className="text-slate-700 dark:text-slate-300 font-medium">{assessment.posts.length} posts analyzed</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div
@@ -466,9 +567,12 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                 >
                   <div className="space-y-0">
                     {assessment.posts.map((post, index) => (
-                      <div
+                      <motion.div
                         key={`${post.id}-${index}`}
-                        className="p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer min-h-[120px]"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.4, delay: index * 0.1, ease: "easeOut" }}
+                        className="p-4 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer min-h-[120px]"
                         onClick={(e) => {
                           e.stopPropagation();
                           handlePostClick(post);
@@ -476,27 +580,27 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                       >
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex items-center space-x-2">
-                            <span className="text-sm font-medium text-gray-500">#{post.rank}</span>
+                            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">#{post.rank}</span>
                             <Badge className={`${post.tagColor} text-white text-xs px-2 py-1 rounded`}>
                               {post.tag}
                             </Badge>
                           </div>
-                          <span className="text-sm text-gray-500">{post.timestamp}</span>
+                          <span className="text-sm text-gray-500 dark:text-gray-400">{post.timestamp}</span>
                         </div>
 
                         <div className="mb-2">
-                          <span className="text-xs text-blue-600 font-medium">{post.subreddit}</span>
+                          <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">{post.subreddit}</span>
                           {post.title && (
-                            <h4 className="text-sm font-semibold text-gray-900 mt-1 break-words">{post.title}</h4>
+                            <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mt-1 break-words">{post.title}</h4>
                           )}
                         </div>
 
-                        <p className="text-gray-700 text-sm mb-3 break-words">{post.content}</p>
+                        <p className="text-gray-700 dark:text-gray-300 text-sm mb-3 break-words">{post.content}</p>
 
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-4 text-gray-500">
+                          <div className="flex items-center space-x-4 text-gray-500 dark:text-gray-400">
                             <div className="flex items-center space-x-1">
-                              <ArrowUp className="w-4 h-4 text-orange-500" />
+                              <ArrowUp className="w-4 h-4 text-orange-500 dark:text-orange-400" />
                               <span className="text-xs font-medium">{post.score}</span>
                               <ArrowDown className="w-4 h-4" />
                             </div>
@@ -505,68 +609,225 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                               <span className="text-xs">{post.comments}</span>
                             </div>
                           </div>
-                          <span className="text-xs text-blue-600 font-medium">
+                          <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">
                             Relevance: {post.relevanceScore}%
                           </span>
                         </div>
-                      </div>
+                      </motion.div>
                     ))}
                   </div>
                 </div>
               </Card>
+              </motion.div>
             )}
+
+            
+        {/* Mental Health Category Averages */}
+        {assessment?.posts && assessment.posts.length > 0 && assessment.posts.some(post => post.mentalHealthScore) && (
+          <motion.div
+            ref={categoryAnalysisRef}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.9 }}
+            className="mt-6"
+          >
+            <div className="bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-800 dark:to-blue-900/30 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 shadow-lg">
+              <div className="flex items-center space-x-3 mb-5">
+                <div className="bg-gradient-to-br from-blue-500 to-purple-600 p-2.5 rounded-xl shadow-md">
+                  <Brain className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Category Risk Analysis</h3>
+                  <p className="text-slate-600 dark:text-slate-400 text-sm">Average scores across posts</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {(() => {
+                  const postsWithScores = assessment.posts.filter(p => p.mentalHealthScore);
+                  if (postsWithScores.length === 0) return null;
+
+                  const categories = ['depression', 'anxiety', 'ptsd', 'schizophrenia', 'bipolar', 'eating_disorder', 'adhd'];
+                  const averages = categories.map(category => {
+                    const sum = postsWithScores.reduce((acc, post) => acc + post.mentalHealthScore![category as keyof typeof post.mentalHealthScore], 0);
+                    const avg = sum / postsWithScores.length;
+                    return {
+                      label: category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                      value: avg,
+                      percentage: Math.round(avg * 100)
+                    };
+                  });
+
+                  // Sort by value for better visualization
+                  averages.sort((a, b) => b.value - a.value);
+
+                  return (
+                    <div>
+                      {averages.map(({ label, value, percentage }, index) => (
+                        <div key={label} className="space-y-1.5 mb-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</span>
+                            <span className="text-sm font-semibold text-slate-600 dark:text-slate-400">{percentage}%</span>
+                          </div>
+                          <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${percentage}%` }}
+                              transition={{ duration: 1.2, delay: 1.2 + (0.1 * index), ease: "easeOut" }}
+                              className={`h-2 rounded-full ${
+                                value < 0.3 ? 'bg-gradient-to-r from-emerald-400 to-emerald-500' :
+                                value < 0.6 ? 'bg-gradient-to-r from-amber-400 to-amber-500' :
+                                'bg-gradient-to-r from-red-400 to-red-500'
+                              }`}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          </motion.div>
+        )}
           </div>
 
           {/* Right Column - AI Analysis */}
           <div className="space-y-6">
-            {/* Analysis Header */}
-            {assessment && (
-              <Card className="p-6 bg-white border border-gray-200 rounded-lg">
-                <div className="flex items-center space-x-3 mb-4">
-                  <div className="flex items-center justify-center w-10 h-10 bg-blue-100 rounded-lg">
-                    <Brain className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">AI Mental Health Analysis</h3>
-                    <div className="space-y-2 mt-1">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-sm text-gray-600">Mental Risk:</span>
-                        <div className="flex-1 max-w-24">
-                          <Progress value={assessment.mental_health_score} className="h-2" />
+            {/* Loading skeletons for right column */}
+            {!showAnalysisHeader && assessment && (
+              <motion.div
+                initial={{ opacity: 1 }}
+                animate={{ opacity: 1 }}
+                className="h-40 bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/20 rounded-lg animate-pulse"
+              />
+            )}
+
+            {/* Analysis Header - Redesigned */}
+            {assessment && showAnalysisHeader && (
+              <motion.div
+                initial={{ opacity: 0, x: 50, scale: 0.95 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                transition={{ duration: 0.6, ease: "easeOut" }}
+              >
+                <Card className="p-0 bg-gradient-to-br from-purple-50 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/20 border border-purple-200 dark:border-purple-800 rounded-xl relative overflow-hidden">
+                  {/* Background decoration */}
+                  <div className="absolute top-0 right-0 w-28 h-28 bg-gradient-to-bl from-purple-200/30 dark:from-purple-700/20 to-transparent rounded-full -translate-y-14 translate-x-14"></div>
+                  <div className="absolute bottom-0 left-0 w-20 h-20 bg-gradient-to-tr from-pink-200/20 dark:from-pink-700/10 to-transparent rounded-full translate-y-10 -translate-x-10"></div>
+
+                  <div className="relative z-10">
+                    {/* Header Section */}
+                    <div className="p-6 pb-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="flex items-center justify-center w-12 h-12 bg-purple-600 dark:bg-purple-500 rounded-xl shadow-lg">
+                            <Brain className="w-7 h-7 text-white" />
+                          </div>
+                          <div>
+                            <h3 className="text-xl font-bold text-purple-900 dark:text-purple-100">Mental Health Analysis</h3>
+                            <p className="text-sm text-purple-700 dark:text-purple-300 font-medium">AI-Powered Risk Assessment</p>
+                          </div>
                         </div>
-                        <span className="text-sm font-medium text-gray-900">{assessment.mental_health_score}%</span>
+                        <Badge className={`${getRiskLevelColor(assessment.overallRiskLevel)} px-4 py-2 rounded-xl text-sm font-bold shadow-lg`}>
+                          {assessment.overallRiskLevel} RISK
+                        </Badge>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <span className="text-sm text-gray-600">Confidence:</span>
-                        <div className="flex-1 max-w-24">
-                          <Progress value={assessment.confidenceScore} className="h-2" />
+                    </div>
+
+                    {/* Key Metrics Grid */}
+                    <div className="px-6 pb-6">
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        {/* Risk Score */}
+                        <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-4 border border-white/60 dark:border-gray-700/60 shadow-sm">
+                          <div className="text-center">
+                            <div className="text-2xl font-black text-purple-900 dark:text-purple-100 mb-1">
+                              {assessment.mental_health_score}%
+                            </div>
+                            <div className="text-xs text-purple-700 dark:text-purple-300 font-semibold">
+                              Risk Score
+                            </div>
+                          </div>
                         </div>
-                        <span className="text-sm font-medium text-gray-900">{assessment.confidenceScore}%</span>
+
+                        {/* Confidence Score */}
+                        <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-4 border border-white/60 dark:border-gray-700/60 shadow-sm">
+                          <div className="text-center">
+                            <div className="text-2xl font-black text-purple-900 dark:text-purple-100 mb-1">
+                              {assessment.confidence_score}%
+                            </div>
+                            <div className="text-xs text-purple-700 dark:text-purple-300 font-semibold">
+                              Confidence
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Visual Risk Indicator */}
+                      <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-4 border border-white/60 dark:border-gray-700/60 shadow-sm">
+                        <div className="text-xs text-purple-700 dark:text-purple-300 font-semibold mb-3 text-center">
+                          Risk Level Visualization
+                        </div>
+
+                        <div className="relative">
+                          <div className="h-3 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${assessment.mental_health_score}%` }}
+                              transition={{ duration: 1.5, delay: 1, ease: "easeOut" }}
+                              className={`h-full ${
+                                assessment.mental_health_score >= 80 ? 'bg-gradient-to-r from-red-400 to-red-500' :
+                                assessment.mental_health_score >= 60 ? 'bg-gradient-to-r from-orange-400 to-orange-500' :
+                                assessment.mental_health_score >= 40 ? 'bg-gradient-to-r from-yellow-400 to-yellow-500' :
+                                'bg-gradient-to-r from-green-400 to-green-500'
+                              }`}
+                            />
+                          </div>
+
+                          {/* Risk Level Markers */}
+                          <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-2 font-medium">
+                            <span>Low</span>
+                            <span>Moderate</span>
+                            <span>High</span>
+                            <span>Critical</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-
-                <Badge className={`${getRiskLevelColor(assessment.overallRiskLevel)} px-3 py-1 rounded-full text-sm font-medium`}>
-                  {assessment.overallRiskLevel} RISK
-                </Badge>
-              </Card>
+                </Card>
+              </motion.div>
             )}
 
 
-            {/* Mental Health Evaluation Panel */}
-            {assessment && (
-              <>
+            {/* Mental Health Evaluation Panel - Redesigned */}
+            {assessment && showAnalysisHeader && (
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, ease: "easeOut", delay: 0.3 }}
+              >
                 {assessment.overallRiskLevel === 'LOW' && (
-                  <Card className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                    <div className="flex items-start space-x-3">
-                      <CheckCircle className="w-6 h-6 text-green-600 mt-1" />
-                      <div>
-                        <h4 className="font-semibold text-green-900">
-                          Positive Mental Health Indicators
-                        </h4>
-                        <p className="text-green-800 text-sm mt-1">
-                          Analysis shows healthy communication patterns and positive engagement behaviors.
+                  <Card className="p-6 bg-gradient-to-br from-green-50 to-emerald-100 dark:from-green-900/30 dark:to-emerald-900/20 border border-green-200 dark:border-green-700 rounded-xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-green-200/30 dark:from-green-600/20 to-transparent rounded-full -translate-y-10 translate-x-10"></div>
+
+                    <div className="relative z-10">
+                      <div className="flex items-center space-x-3 mb-4">
+                        <div className="flex items-center justify-center w-12 h-12 bg-green-600 rounded-xl shadow-lg">
+                          <CheckCircle className="w-7 h-7 text-white" />
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-green-900 dark:text-green-100 text-lg">
+                            Positive Mental Health Status
+                          </h4>
+                          <p className="text-green-700 dark:text-green-300 text-sm font-medium">
+                            Low risk indicators detected
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg p-4 border border-white/60 dark:border-gray-700/60">
+                        <p className="text-green-800 dark:text-green-200 font-medium">
+                          Analysis shows healthy communication patterns and positive engagement behaviors. Continue monitoring and maintain current support systems.
                         </p>
                       </div>
                     </div>
@@ -574,15 +835,27 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                 )}
 
                 {assessment.overallRiskLevel === 'MODERATE' && (
-                  <Card className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <div className="flex items-start space-x-3">
-                      <AlertTriangle className="w-6 h-6 text-yellow-600 mt-1" />
-                      <div>
-                        <h4 className="font-semibold text-yellow-900">
-                          Further Monitoring Recommended
-                        </h4>
-                        <p className="text-yellow-800 text-sm mt-1">
-                          Some concerning patterns detected. Consider periodic check-ins and continued observation.
+                  <Card className="p-6 bg-gradient-to-br from-yellow-50 to-orange-100 dark:from-yellow-900/30 dark:to-orange-900/20 border border-yellow-200 dark:border-yellow-700 rounded-xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-yellow-200/30 dark:from-yellow-600/20 to-transparent rounded-full -translate-y-10 translate-x-10"></div>
+
+                    <div className="relative z-10">
+                      <div className="flex items-center space-x-3 mb-4">
+                        <div className="flex items-center justify-center w-12 h-12 bg-yellow-600 rounded-xl shadow-lg">
+                          <AlertTriangle className="w-7 h-7 text-white" />
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-yellow-900 dark:text-yellow-100 text-lg">
+                            Monitoring Recommended
+                          </h4>
+                          <p className="text-yellow-700 dark:text-yellow-300 text-sm font-medium">
+                            Moderate risk indicators present
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg p-4 border border-white/60 dark:border-gray-700/60">
+                        <p className="text-yellow-800 dark:text-yellow-200 font-medium">
+                          Some concerning patterns detected. Consider periodic check-ins and continued observation. Preventive interventions may be beneficial.
                         </p>
                       </div>
                     </div>
@@ -590,43 +863,73 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                 )}
 
                 {(assessment.overallRiskLevel === 'HIGH' || assessment.overallRiskLevel === 'CRITICAL') && (
-                  <Card className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                    <div className="flex items-start space-x-3">
-                      <AlertTriangle className="w-6 h-6 text-red-600 mt-1" />
-                      <div>
-                        <h4 className="font-semibold text-red-900">
-                          {assessment.overallRiskLevel === 'CRITICAL' ? 'Immediate Professional Support Required' : 'Clinical Assessment Recommended'}
-                        </h4>
-                        <p className="text-red-800 text-sm mt-1">
+                  <Card className="p-6 bg-gradient-to-br from-red-50 to-rose-100 dark:from-red-900/30 dark:to-rose-900/20 border border-red-200 dark:border-red-700 rounded-xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-red-200/30 dark:from-red-600/20 to-transparent rounded-full -translate-y-10 translate-x-10"></div>
+
+                    <div className="relative z-10">
+                      <div className="flex items-center space-x-3 mb-4">
+                        <div className="flex items-center justify-center w-12 h-12 bg-red-600 rounded-xl shadow-lg animate-pulse">
+                          <AlertTriangle className="w-7 h-7 text-white" />
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-red-900 dark:text-red-100 text-lg">
+                            {assessment.overallRiskLevel === 'CRITICAL' ? 'Immediate Support Required' : 'Clinical Assessment Needed'}
+                          </h4>
+                          <p className="text-red-700 dark:text-red-300 text-sm font-medium">
+                            {assessment.overallRiskLevel === 'CRITICAL' ? 'Critical risk indicators' : 'High risk indicators detected'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg p-4 border border-white/60 dark:border-gray-700/60">
+                        <p className="text-red-800 dark:text-red-200 font-medium mb-3">
                           {assessment.overallRiskLevel === 'CRITICAL'
                             ? 'Critical indicators detected. Immediate mental health professional consultation strongly advised.'
                             : 'Multiple risk factors identified. Professional mental health evaluation recommended.'
                           }
                         </p>
+
+                        {assessment.overallRiskLevel === 'CRITICAL' && (
+                          <div className="bg-red-100 dark:bg-red-900/40 rounded-lg p-3 border border-red-200 dark:border-red-700">
+                            <p className="text-red-900 dark:text-red-100 text-sm font-bold">
+                              🚨 Consider immediate intervention or crisis support resources
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </Card>
                 )}
-              </>
+              </motion.div>
             )}
 
             {/* Executive Summary */}
-            <Card className="p-6 bg-gradient-to-br from-blue-50 to-indigo-100 border border-blue-200 rounded-lg relative overflow-hidden">
+            {(isAnalyzing || (assessment && showExecutiveSummary)) && (
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{
+                  duration: 0.6,
+                  ease: "easeOut",
+                  delay: isAnalyzing ? 0 : 0.2
+                }}
+              >
+                <Card className="p-6 bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800 rounded-lg relative overflow-hidden">
               {/* Background decoration */}
-              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-blue-200/30 to-transparent rounded-full -translate-y-16 translate-x-16"></div>
-              <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-indigo-200/20 to-transparent rounded-full translate-y-12 -translate-x-12"></div>
+              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-blue-200/30 dark:from-blue-700/20 to-transparent rounded-full -translate-y-16 translate-x-16"></div>
+              <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-indigo-200/20 dark:from-indigo-700/10 to-transparent rounded-full translate-y-12 -translate-x-12"></div>
 
               <div className="relative z-10">
                 <div className="flex items-center space-x-3 mb-4">
-                  <div className="flex items-center justify-center w-8 h-8 bg-blue-600 rounded-lg">
+                  <div className="flex items-center justify-center w-8 h-8 bg-blue-600 dark:bg-blue-500 rounded-lg">
                     <Brain className="w-5 h-5 text-white" />
                   </div>
-                  <h4 className="font-semibold text-blue-900 text-lg">Executive Summary</h4>
+                  <h4 className="font-semibold text-blue-900 dark:text-blue-100 text-lg">Executive Summary</h4>
                 </div>
 
                 {isAnalyzing ? (
                   <div className="flex items-center space-x-3">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 dark:border-blue-400"></div>
                     <div className="relative h-6 overflow-hidden w-64">
                       <AnimatePresence mode="wait">
                         <motion.div
@@ -637,7 +940,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                           transition={{ duration: 0.5, ease: "easeInOut" }}
                           className="absolute inset-0 flex items-center"
                         >
-                          <span className="text-blue-700 text-sm font-medium">
+                          <span className="text-blue-700 dark:text-blue-300 text-sm font-medium">
                             {loadingTexts[loadingTextIndex]}
                           </span>
                         </motion.div>
@@ -645,55 +948,78 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                     </div>
                   </div>
                 ) : (
-                  <div className="bg-white/60 backdrop-blur-sm rounded-lg p-4 border border-white/50">
-                    <p className="text-gray-800 text-base leading-relaxed font-medium">
+                  <div className="bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm rounded-lg p-4 border border-white/50 dark:border-gray-700/50">
+                    <p className="text-gray-800 dark:text-gray-200 text-base leading-relaxed font-medium">
                       {streamedText}
                       {aiReport && streamedText.length < aiReport.executiveSummary.length && (
-                        <span className="animate-pulse text-blue-600">|</span>
+                        <span className="animate-pulse text-blue-600 dark:text-blue-400">|</span>
                       )}
                     </p>
                   </div>
                 )}
               </div>
             </Card>
+              </motion.div>
+            )}
 
 
             {/* Key Points */}
             {assessment && assessment.keyPoints && assessment.keyPoints.length > 0 && (streamedKeyPoints.length > 0 || isStreamingKeyPoints) && (
-              <Card className="p-6 bg-white border border-gray-200 rounded-lg">
-                <h4 className="font-semibold text-gray-900 mb-4">Key Insights</h4>
-                <div className="space-y-3">
-                  {streamedKeyPoints.map((point, index) => (
-                    <motion.div
-                      key={index}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.5, ease: "easeOut" }}
-                      className="flex items-start space-x-3"
-                    >
-                      <div className="w-2 h-2 bg-blue-600 rounded-full mt-2 flex-shrink-0"></div>
-                      <p className="text-gray-700 text-sm font-medium">{point}</p>
-                    </motion.div>
-                  ))}
-                  {isStreamingKeyPoints && streamedKeyPoints.length < assessment.keyPoints.length && (
-                    <div className="flex items-start space-x-3">
-                      <div className="w-2 h-2 bg-blue-400 rounded-full mt-2 flex-shrink-0 animate-pulse"></div>
-                      <p className="text-gray-500 text-sm font-medium italic">Loading insights...</p>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.5, ease: "easeOut" }}
+              >
+                <Card className="p-6 bg-gradient-to-br from-emerald-50 to-teal-100 dark:from-emerald-900/30 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg relative overflow-hidden">
+                {/* Background decoration */}
+                <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-emerald-200/30 dark:from-emerald-700/20 to-transparent rounded-full -translate-y-12 translate-x-12"></div>
+                <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-teal-200/20 dark:from-teal-700/10 to-transparent rounded-full translate-y-8 -translate-x-8"></div>
+
+                <div className="relative z-10">
+                  <div className="flex items-center space-x-3 mb-4">
+                    <div className="flex items-center justify-center w-8 h-8 bg-emerald-600 dark:bg-emerald-500 rounded-lg">
+                      <Activity className="w-5 h-5 text-white" />
                     </div>
-                  )}
+                    <h4 className="font-semibold text-emerald-900 dark:text-emerald-100 text-lg">Key Insights</h4>
+                  </div>
+
+                  <div className="bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm rounded-lg p-4 border border-white/50 dark:border-gray-700/50">
+                    <div className="space-y-3">
+                      {streamedKeyPoints.map((point, index) => (
+                        <motion.div
+                          key={index}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.5, ease: "easeOut" }}
+                          className="flex items-start space-x-3"
+                        >
+                          <div className="w-2 h-2 bg-emerald-600 dark:bg-emerald-400 rounded-full mt-2 flex-shrink-0"></div>
+                          <p className="text-gray-800 dark:text-gray-200 text-sm font-medium">{point}</p>
+                        </motion.div>
+                      ))}
+                      {isStreamingKeyPoints && streamedKeyPoints.length < assessment.keyPoints.length && (
+                        <div className="flex items-start space-x-3">
+                          <div className="w-2 h-2 bg-emerald-400 dark:bg-emerald-300 rounded-full mt-2 flex-shrink-0 animate-pulse"></div>
+                          <p className="text-emerald-700 dark:text-emerald-300 text-sm font-medium italic">Loading insights...</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </Card>
+              </motion.div>
             )}
           </div>
         </div>
+
       </main>
 
       {/* Post Modal */}
       {selectedPost && (
         <Dialog open={true} onOpenChange={handleCloseModal}>
-          <DialogContent className="!max-w-3xl !w-[90vw] mx-auto max-h-[90vh] overflow-y-auto">
+          <DialogContent className="!max-w-3xl !w-[90vw] mx-auto max-h-[90vh] overflow-y-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
             <DialogHeader>
-              <DialogTitle>Post Analysis</DialogTitle>
+              <DialogTitle className="text-gray-900 dark:text-gray-100">Post Analysis</DialogTitle>
             </DialogHeader>
 
             <div className="space-y-6">
@@ -706,12 +1032,15 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                     className="w-12 h-12 rounded-full object-cover"
                   />
                   <div>
-                    <h4 className="font-semibold text-gray-900">{userProfile?.displayName}</h4>
-                    <p className="text-gray-600 text-sm">u/{userProfile?.username} • {selectedPost.timestamp}</p>
+                    <h4 className="font-semibold text-gray-900 dark:text-gray-100">{userProfile?.displayName}</h4>
+                    <p className="text-gray-600 dark:text-gray-400 text-sm">u/{userProfile?.username} • {selectedPost.timestamp}</p>
+                    {userProfile?.nickname && userProfile.nickname !== userProfile.username && (
+                      <p className="text-gray-500 dark:text-gray-500 text-xs">{userProfile.nickname}</p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <span className="text-sm font-medium text-gray-500">#{selectedPost.rank}</span>
+                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">#{selectedPost.rank}</span>
                   <Badge className={`${selectedPost.tagColor} text-white text-sm px-3 py-1 rounded-full`}>
                     {selectedPost.tag}
                   </Badge>
@@ -719,21 +1048,21 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
               </div>
 
               {/* Post Content */}
-              <div className="bg-gray-50 rounded-lg p-6">
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6">
                 <div className="mb-3">
-                  <span className="text-sm text-blue-600 font-medium">{selectedPost.subreddit}</span>
+                  <span className="text-sm text-blue-600 dark:text-blue-400 font-medium">{selectedPost.subreddit}</span>
                   {selectedPost.title && (
-                    <h3 className="text-lg font-semibold text-gray-900 mt-1">{selectedPost.title}</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mt-1">{selectedPost.title}</h3>
                   )}
                 </div>
-                <p className="text-gray-800 leading-relaxed text-base">{selectedPost.content}</p>
+                <p className="text-gray-800 dark:text-gray-200 leading-relaxed text-base">{selectedPost.content}</p>
               </div>
 
               {/* Post Stats */}
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div className="flex items-center space-x-6 text-gray-600">
+              <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <div className="flex items-center space-x-6 text-gray-600 dark:text-gray-300">
                   <div className="flex items-center space-x-2">
-                    <ArrowUp className="w-5 h-5 text-orange-500" />
+                    <ArrowUp className="w-5 h-5 text-orange-500 dark:text-orange-400" />
                     <span className="text-sm font-medium">{selectedPost.score}</span>
                     <ArrowDown className="w-5 h-5" />
                   </div>
@@ -743,24 +1072,88 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm text-gray-600">Relevance Score</div>
-                  <div className="text-lg font-bold text-blue-600">{selectedPost.relevanceScore}%</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-300">Relevance Score</div>
+                  <div className="text-lg font-bold text-blue-600 dark:text-blue-400">{selectedPost.relevanceScore}%</div>
                 </div>
               </div>
 
               {/* Analysis Insights */}
               <div className="space-y-4">
-                <h5 className="font-semibold text-gray-900">AI Analysis Insights</h5>
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h5 className="font-semibold text-gray-900 dark:text-gray-100">AI Analysis Insights</h5>
+
+                {/* Mental Health Score Bars */}
+                {selectedPost.mentalHealthScore && (
+                  <div className="bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/30 dark:to-purple-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
+                    <div className="flex items-start space-x-3 mb-4">
+                      <Brain className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                      <div>
+                        <h6 className="font-medium text-blue-900 dark:text-blue-100 mb-1">Mental Health Assessment</h6>
+                        <p className="text-xs text-blue-700 dark:text-blue-300">AI-powered analysis of potential mental health indicators</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {Object.entries(selectedPost.mentalHealthScore).map(([key, value], index) => {
+                        if (key === 'overall_score') return null;
+                        const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                        const percentage = Math.round(value * 100);
+                        const getBarColor = (score: number) => {
+                          if (score < 0.3) return 'bg-gradient-to-r from-green-400 to-green-500';
+                          if (score < 0.6) return 'bg-gradient-to-r from-yellow-400 to-yellow-500';
+                          return 'bg-gradient-to-r from-red-400 to-red-500';
+                        };
+
+                        return (
+                          <div key={key} className="space-y-1">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</span>
+                              <span className="text-xs text-gray-600 dark:text-gray-400">{percentage}%</span>
+                            </div>
+                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                              <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${percentage}%` }}
+                                transition={{ duration: 0.8, delay: 0.1 * index, ease: "easeOut" }}
+                                className={`h-2 rounded-full ${getBarColor(value)}`}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Overall Score */}
+                      <div className="pt-2 mt-3 border-t border-blue-200 dark:border-blue-700">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-sm font-semibold text-blue-900 dark:text-blue-100">Overall Risk Score</span>
+                          <span className="text-sm font-bold text-blue-800 dark:text-blue-200">{Math.round(selectedPost.mentalHealthScore.overall_score * 100)}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${Math.round(selectedPost.mentalHealthScore.overall_score * 100)}%` }}
+                            transition={{ duration: 1, delay: 0.8, ease: "easeOut" }}
+                            className={`h-3 rounded-full ${
+                              selectedPost.mentalHealthScore.overall_score < 0.3 ? 'bg-gradient-to-r from-green-400 to-green-500' :
+                              selectedPost.mentalHealthScore.overall_score < 0.6 ? 'bg-gradient-to-r from-yellow-400 to-yellow-500' :
+                              'bg-gradient-to-r from-red-400 to-red-500'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Indicators */}
+                <div className="bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-700 rounded-lg p-4">
                   <div className="flex items-start space-x-3">
-                    <Brain className="w-5 h-5 text-blue-600 mt-0.5" />
+                    <AlertTriangle className="w-5 h-5 text-orange-600 dark:text-orange-400 mt-0.5" />
                     <div>
-                      <h6 className="font-medium text-blue-900 mb-2">Mental Health Indicators</h6>
-                      <div className="space-y-2 text-sm text-blue-800">
+                      <h6 className="font-medium text-orange-900 dark:text-orange-100 mb-2">Detected Indicators</h6>
+                      <div className="space-y-1 text-sm text-orange-800 dark:text-orange-200">
                         {selectedPost.concerns?.map((concern, index) => (
-                          <p key={index}>• {concern.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} detected</p>
+                          <p key={index}>• {concern.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</p>
                         ))}
-                        <p>• Mental health risk: {selectedPost.sentimentScore === 0 ? 'No concern detected' : selectedPost.sentimentScore > 0.7 ? 'High risk' : selectedPost.sentimentScore > 0.4 ? 'Moderate risk' : 'Low risk'}</p>
                       </div>
                     </div>
                   </div>

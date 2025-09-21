@@ -5,6 +5,18 @@ export interface UserProfile {
   total_karma: number;
   bio: string;
   cake_day: string;
+  nickname?: string; // User's real name if available
+}
+
+export interface MentalHealthScore {
+  depression: number;
+  anxiety: number;
+  ptsd: number;
+  schizophrenia: number;
+  bipolar: number;
+  eating_disorder: number;
+  adhd: number;
+  overall_score: number;
 }
 
 export interface AssessmentItem {
@@ -14,6 +26,7 @@ export interface AssessmentItem {
   title: string;
   content: string;
   created_at: string;
+  score?: MentalHealthScore;
   indicators: string[];
   relevance_score: number;
 }
@@ -46,6 +59,7 @@ export interface Post {
   sentimentScore: number;
   concerns: string[];
   postType: 'text' | 'link' | 'image';
+  mentalHealthScore?: MentalHealthScore;
 }
 
 // Request/Response interfaces

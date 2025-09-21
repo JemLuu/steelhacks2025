@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Brain, BarChart3, Shield, Star, Users, TrendingUp, Eye, Menu, X } from 'lucide-react';
+import { Brain, BarChart3, Shield, Star, Users, TrendingUp, Eye, Menu, X, Moon, Sun } from 'lucide-react';
+import { useTheme } from '../contexts/ThemeContext';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card } from './ui/card';
@@ -11,6 +12,7 @@ interface LandingPageProps {
 }
 
 export default function LandingPage({ onAnalyze }: LandingPageProps) {
+  const { theme, toggleTheme } = useTheme();
   const [heroHandle, setHeroHandle] = useState('');
   const [ctaHandle, setCtaHandle] = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -54,35 +56,8 @@ export default function LandingPage({ onAnalyze }: LandingPageProps) {
     }
   ];
 
-  const testimonials = [
-    {
-      name: "Dr. Sarah Chen",
-      role: "Psychiatrist, Stanford Medical",
-      content: "MindScope AI has revolutionized how we approach early intervention in mental health care.",
-      image: "https://images.unsplash.com/photo-1666886573230-2b730505f298?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtZWRpY2FsJTIwcHJvZmVzc2lvbmFsJTIwZG9jdG9yJTIwaGVhbHRoY2FyZXxlbnwxfHx8fDE3NTgyODczMzd8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral"
-    },
-    {
-      name: "Dr. Michael Rodriguez",
-      role: "Clinical Psychologist, Mayo Clinic",
-      content: "The accuracy and depth of insights provided by this tool are unprecedented in digital mental health.",
-      image: "https://images.unsplash.com/photo-1589104759909-e355f8999f7e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoZWFsdGhjYXJlJTIwdGVjaG5vbG9neSUyMG1lZGljYWwlMjB0ZWFtfGVufDF8fHx8MTc1ODM5MDkxMXww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral"
-    },
-    {
-      name: "Dr. Emily Watson",
-      role: "Director of Mental Health, Johns Hopkins",
-      content: "This platform has enabled us to identify at-risk patients weeks earlier than traditional methods.",
-      image: "https://images.unsplash.com/photo-1739298061757-7a3339cee982?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMGJ1c2luZXNzJTIwcGVyc29ufGVufDF8fHx8MTc1ODM5MDkxM3ww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral"
-    }
-  ];
-
-  const stats = [
-    { number: "10,000+", label: "Analyses Completed" },
-    { number: "95%", label: "Accuracy Rate" },
-    { number: "500+", label: "Healthcare Providers" }
-  ];
-
   return (
-    <div className="dark min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-gray-50 dark:from-slate-900 dark:via-purple-900 dark:to-slate-900">
       {/* Animated Background Elements */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <motion.div
@@ -133,7 +108,7 @@ export default function LandingPage({ onAnalyze }: LandingPageProps) {
       <motion.header
         className="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
         style={{
-          backgroundColor: scrollY > 50 ? 'rgba(15, 23, 42, 0.9)' : 'transparent',
+          backgroundColor: scrollY > 50 ? (theme === 'dark' ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)') : 'transparent',
           backdropFilter: scrollY > 50 ? 'blur(20px)' : 'none'
         }}
       >
@@ -142,23 +117,37 @@ export default function LandingPage({ onAnalyze }: LandingPageProps) {
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent"
+              className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent"
             >
-              MindScope AI
+              Mindful
             </motion.div>
             
-            <nav className="hidden md:flex items-center space-x-8">
-              <a href="#home" className="text-gray-300 hover:text-white transition-colors">Home</a>
-              <a href="#about" className="text-gray-300 hover:text-white transition-colors">About</a>
-              <a href="#contact" className="text-gray-300 hover:text-white transition-colors">Contact</a>
-            </nav>
+            <div className="flex items-center space-x-6">
+              <nav className="hidden md:flex items-center space-x-8">
+                <a href="#home" className="text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Home</a>
+                <a href="#about" className="text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">About</a>
+                <a href="#contact" className="text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Contact</a>
+              </nav>
 
-            <button
-              className="md:hidden text-white"
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-            >
-              {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
-            </button>
+              <Button
+                variant="ghost"
+                onClick={toggleTheme}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
+              >
+                {theme === 'light' ? (
+                  <Moon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                ) : (
+                  <Sun className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                )}
+              </Button>
+
+              <button
+                className="md:hidden text-gray-700 dark:text-white"
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+              >
+                {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
+              </button>
+            </div>
           </div>
 
           {/* Mobile Menu */}
@@ -169,9 +158,9 @@ export default function LandingPage({ onAnalyze }: LandingPageProps) {
               className="md:hidden mt-4 pb-4"
             >
               <nav className="flex flex-col space-y-4">
-                <a href="#home" className="text-gray-300 hover:text-white transition-colors">Home</a>
-                <a href="#about" className="text-gray-300 hover:text-white transition-colors">About</a>
-                <a href="#contact" className="text-gray-300 hover:text-white transition-colors">Contact</a>
+                <a href="#home" className="text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Home</a>
+                <a href="#about" className="text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">About</a>
+                <a href="#contact" className="text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Contact</a>
               </nav>
             </motion.div>
           )}
@@ -185,16 +174,16 @@ export default function LandingPage({ onAnalyze }: LandingPageProps) {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
-            className="text-4xl md:text-7xl font-black mb-6 bg-gradient-to-r from-white via-blue-100 to-purple-100 bg-clip-text text-transparent leading-tight"
+            className="text-4xl md:text-7xl font-black mb-6 bg-gradient-to-r from-gray-900 via-blue-900 to-purple-900 dark:from-white dark:via-blue-100 dark:to-purple-100 bg-clip-text text-transparent leading-tight"
           >
             Predict Mental Health Risks Before They Happen
           </motion.h1>
-          
+
           <motion.p
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.2 }}
-            className="text-xl md:text-2xl text-gray-300 mb-12 max-w-4xl mx-auto"
+            className="text-xl md:text-2xl text-gray-600 dark:text-gray-300 mb-12 max-w-4xl mx-auto"
           >
             AI-powered social media analysis that gives mental health professionals unprecedented patient insights
           </motion.p>
@@ -212,7 +201,7 @@ export default function LandingPage({ onAnalyze }: LandingPageProps) {
                 placeholder="@username"
                 value={heroHandle}
                 onChange={(e) => setHeroHandle(e.target.value)}
-                className="w-full h-14 px-6 text-lg bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500/50 focus:border-transparent"
+                className="w-full h-14 px-6 text-lg bg-gray-100/80 dark:bg-white/10 backdrop-blur-md border border-gray-300 dark:border-white/20 rounded-2xl text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500/50 focus:border-transparent"
               />
               <Button
                 type="submit"
@@ -227,7 +216,7 @@ export default function LandingPage({ onAnalyze }: LandingPageProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.8, delay: 0.6 }}
-            className="text-sm text-gray-400"
+            className="text-sm text-gray-500 dark:text-gray-400"
           >
             For licensed healthcare providers only
           </motion.p>
@@ -241,11 +230,11 @@ export default function LandingPage({ onAnalyze }: LandingPageProps) {
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="text-4xl md:text-5xl font-bold text-center mb-16 text-white"
+            className="text-4xl md:text-5xl font-bold text-center mb-16 text-gray-900 dark:text-white"
           >
             Revolutionary AI Technology
           </motion.h2>
-          
+
           <div className="grid md:grid-cols-3 gap-8">
             {features.map((feature, index) => (
               <motion.div
@@ -255,12 +244,12 @@ export default function LandingPage({ onAnalyze }: LandingPageProps) {
                 viewport={{ once: true }}
                 transition={{ duration: 0.6, delay: index * 0.2 }}
               >
-                <Card className="p-8 bg-white/5 backdrop-blur-md border border-white/10 hover:bg-white/10 transition-all duration-300">
+                <Card className="p-8 bg-white/80 dark:bg-white/5 backdrop-blur-md border border-gray-200 dark:border-white/10 hover:bg-white/90 dark:hover:bg-white/10 transition-all duration-300">
                   <div className="flex items-center justify-center w-16 h-16 mb-6 mx-auto bg-gradient-to-r from-blue-500 to-purple-500 rounded-2xl">
                     <feature.icon className="w-8 h-8 text-white" />
                   </div>
-                  <h3 className="text-xl font-semibold text-white mb-4 text-center">{feature.title}</h3>
-                  <p className="text-gray-300 text-center">{feature.description}</p>
+                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 text-center">{feature.title}</h3>
+                  <p className="text-gray-600 dark:text-gray-300 text-center">{feature.description}</p>
                 </Card>
               </motion.div>
             ))}
@@ -276,7 +265,7 @@ export default function LandingPage({ onAnalyze }: LandingPageProps) {
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="text-4xl md:text-5xl font-bold mb-6 text-white"
+            className="text-4xl md:text-5xl font-bold mb-6 text-gray-900 dark:text-white"
           >
             Ready to Transform Patient Care?
           </motion.h2>
@@ -286,7 +275,7 @@ export default function LandingPage({ onAnalyze }: LandingPageProps) {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.2 }}
-            className="text-xl text-gray-300 mb-12 max-w-2xl mx-auto"
+            className="text-xl text-gray-600 dark:text-gray-300 mb-12 max-w-2xl mx-auto"
           >
             Start your free analysis today and discover what social media reveals about mental health
           </motion.p>
@@ -300,38 +289,38 @@ export default function LandingPage({ onAnalyze }: LandingPageProps) {
           >
             <Button
               variant="outline"
-              className="mr-4 px-8 py-3 bg-transparent border-2 border-white/30 text-white hover:bg-white/10 rounded-xl"
+              className="mr-4 px-8 py-3 bg-transparent border-2 border-gray-300 dark:border-white/30 text-gray-700 dark:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-xl"
             >
               Book a Demo
             </Button>
-            <p className="text-gray-400">Start your free analysis today</p>
+            <p className="text-gray-500 dark:text-gray-400">Start your free analysis today</p>
           </motion.div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="py-12 px-6 border-t border-white/10">
+      <footer className="py-12 px-6 border-t border-gray-200 dark:border-white/10">
         <div className="container mx-auto">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <div className="mb-4 md:mb-0">
-              <div className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent mb-2">
-                MindScope AI
+              <div className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent mb-2">
+                Mindful
               </div>
-              <p className="text-gray-400 text-sm max-w-md">
-                Professional mental health screening tool for licensed healthcare providers. 
+              <p className="text-gray-500 dark:text-gray-400 text-sm max-w-md">
+                Professional mental health screening tool for licensed healthcare providers.
                 Not intended for diagnostic purposes.
               </p>
             </div>
-            
+
             <div className="flex items-center space-x-6">
-              <a href="#privacy" className="text-gray-400 hover:text-white transition-colors text-sm">Privacy Policy</a>
-              <a href="#terms" className="text-gray-400 hover:text-white transition-colors text-sm">Terms of Service</a>
-              <a href="#contact" className="text-gray-400 hover:text-white transition-colors text-sm">Contact</a>
+              <a href="#privacy" className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white transition-colors text-sm">Privacy Policy</a>
+              <a href="#terms" className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white transition-colors text-sm">Terms of Service</a>
+              <a href="#contact" className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white transition-colors text-sm">Contact</a>
             </div>
           </div>
-          
-          <div className="mt-8 pt-8 border-t border-white/10 text-center text-gray-400 text-sm">
-            © 2025 MindScope AI. All rights reserved. For professional medical use only.
+
+          <div className="mt-8 pt-8 border-t border-gray-200 dark:border-white/10 text-center text-gray-500 dark:text-gray-400 text-sm">
+            © 2025 Mindful. All rights reserved. For professional medical use only.
           </div>
         </div>
       </footer>
