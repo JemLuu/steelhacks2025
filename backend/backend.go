@@ -398,12 +398,14 @@ func Predict(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedItem, error
 		texts[i] = w.Text
 	}
 
-	// Single batch call
-	scores, err := callPredict(ctx, texts)
-	if err != nil {
-		// On error, fill zeros but keep order
-		scores = make([]MHScore, len(queue))
-	}
+	/*
+		// Single batch call
+		scores, err := callPredict(ctx, texts)
+		if err != nil {
+			// On error, fill zeros but keep order
+			scores = make([]MHScore, len(queue))
+		}
+	*/
 
 	// Stitch results
 	results := make([]ClassifiedItem, len(queue))
@@ -414,7 +416,7 @@ func Predict(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedItem, error
 			Permalink: w.Permalink,
 			Title:     w.Title,
 			Content:   w.Text,
-			Score:     scores[i],
+			Score:     MHScore{},
 		}
 	}
 
