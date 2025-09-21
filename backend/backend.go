@@ -407,7 +407,7 @@ Task:
 2) Produce a confidence_score (0..100).
 3) A mental_health_score (0..100). Note that 0 is good mental health and 100 is bad mental health.
 4) Select at most 5 notable items and RETURN ONLY their permalinks plus:
-   - indicators: short bullet-like phrases (strings). These can be positive or negative. These have to make sense in the context of the scores given to the post.
+   - indicators: short bullet-like phrases that are a max of 3 words (strings). These can be positive or negative. These have to make sense in the context of the scores given to the post.
    - relevance_score (0..10)
 
 IMPORTANT:
