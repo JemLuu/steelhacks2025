@@ -42,7 +42,8 @@ type APIAssessmentResponse struct {
 	ExecutiveSummary  string         `json:"executive_summary"`
 	ConfidenceScore   float64        `json:"confidence_score"`
 	MentalHealthScore float64        `json:"mental_health_score"`
-	Items             []EnrichedItem `json:"items"` // Claude-selected items, enriched with content + scores
+	PostsCount        int            `json:"posts_count"`
+	Items             []EnrichedItem `json:"items"`
 }
 
 func main() {
@@ -93,7 +94,7 @@ func main() {
 		port = "8080"
 	}
 	addr := ":" + port
-fmt.Printf("🚀 listening on http://localhost%s\n", addr)
+	fmt.Printf("🚀 listening on http://localhost%s\n", addr)
 	if err := http.ListenAndServe(addr, withCORS(mux)); err != nil {
 		panic(err)
 	}

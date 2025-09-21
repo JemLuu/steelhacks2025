@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-var httpClient = &http.Client{Timeout: 60 * time.Second}
+var httpClient = &http.Client{Timeout: 180 * time.Second}
 
 // ---------- Reddit scraping ----------
 
@@ -278,101 +278,144 @@ type ClassifiedItem struct {
 	Type      string    `json:"type"` // "post" | "comment"
 	Subreddit string    `json:"subreddit"`
 	Permalink string    `json:"permalink"`
-	Title     string    `json:"title"`     // post title (empty for comments)
-	Content   string    `json:"content"`   // post selftext or comment body
+	Title     string    `json:"title"`      // post title (empty for comments)
+	Content   string    `json:"content"`    // post selftext or comment body
 	CreatedAt time.Time `json:"created_at"` // when the post/comment was created
 	Score     MHScore   `json:"score"`
 }
 
-func callPredictSingle(ctx context.Context, text string) (MHScore, error) {
-	payload := struct {
-		Text string `json:"text"`
-	}{Text: strings.TrimSpace(text)}
-	body, _ := json.Marshal(payload)
-
-	url := externalAPIBase() + "/predict"
-	req, _ := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return MHScore{}, fmt.Errorf("single request failed: %w", err)
-	}
-	defer resp.Body.Close()
-	respBytes, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return MHScore{}, fmt.Errorf("single API status %s: %s", resp.Status, string(respBytes))
+func callPredict(ctx context.Context, texts []string) ([]MHScore, error) {
+	if len(texts) == 0 {
+		return nil, nil
 	}
 
-	var out MHScore
-	if err := json.Unmarshal(respBytes, &out); err != nil {
-		return MHScore{}, fmt.Errorf("decode single response: %w", err)
+	batchPath := strings.TrimSpace(os.Getenv("MENTAL_API_BATCH_PATH"))
+	if batchPath == "" {
+		batchPath = "/predict/batch"
 	}
+
+	const maxBatch = 100
+	out := make([]MHScore, 0, len(texts))
+
+	for i := 0; i < len(texts); i += maxBatch {
+		j := i + maxBatch
+		if j > len(texts) {
+			j = len(texts)
+		}
+		part := texts[i:j]
+
+		payload := struct {
+			Texts []string `json:"texts"`
+		}{Texts: part}
+		body, _ := json.Marshal(payload)
+
+		url := externalAPIBase() + batchPath
+		req, _ := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("batch request failed: %w", err)
+		}
+		respBytes, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return nil, fmt.Errorf("batch API status %s: %s", resp.Status, string(respBytes))
+		}
+
+		// Primary: {"predictions":[...]}
+		var wrap struct {
+			Predictions []MHScore `json:"predictions"`
+		}
+		if err := json.Unmarshal(respBytes, &wrap); err == nil && wrap.Predictions != nil {
+			if len(wrap.Predictions) != len(part) {
+				return nil, fmt.Errorf("batch length mismatch: got %d, want %d", len(wrap.Predictions), len(part))
+			}
+			out = append(out, wrap.Predictions...)
+			continue
+		}
+
+		// Fallbacks (just in case the server changes shape)
+		var arr []MHScore
+		if err := json.Unmarshal(respBytes, &arr); err == nil && len(arr) == len(part) {
+			out = append(out, arr...)
+			continue
+		}
+		var withScores struct {
+			Scores []MHScore `json:"scores"`
+		}
+		if err := json.Unmarshal(respBytes, &withScores); err == nil && len(withScores.Scores) == len(part) {
+			out = append(out, withScores.Scores...)
+			continue
+		}
+		var withResults struct {
+			Results []MHScore `json:"results"`
+		}
+		if err := json.Unmarshal(respBytes, &withResults); err == nil && len(withResults.Results) == len(part) {
+			out = append(out, withResults.Results...)
+			continue
+		}
+
+		return nil, fmt.Errorf("unrecognized batch response: %s", string(respBytes))
+	}
+
 	return out, nil
 }
 
-func PredictSequential(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedItem, error) {
+func Predict(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedItem, error) {
 	if cp == nil {
 		return nil, errors.New("nil CommentsAndPosts")
 	}
-	results := make([]ClassifiedItem, 0, len(cp.Posts)+len(cp.Comments))
 
-	// posts
+	// Build texts + metadata
+	type work struct {
+		Type      string
+		Subreddit string
+		Permalink string
+		Text      string
+		Title     string
+	}
+	var queue []work
 	for _, p := range cp.Posts {
-		// For analysis, combine title and content, but preserve them separately
-		analysisText := strings.TrimSpace(p.Title)
-		if content := strings.TrimSpace(p.Content); content != "" {
-			if analysisText != "" {
-				analysisText += "\n\n" + content
-			} else {
-				analysisText = content
-			}
+		t := strings.TrimSpace(p.Content)
+		if t == "" {
+			t = "(empty post)"
 		}
-		if analysisText == "" {
-			analysisText = "(empty post)"
+		queue = append(queue, work{"post", p.Subreddit, p.Permalink, t, p.Title})
+	}
+	for _, c := range cp.Comments {
+		t := strings.TrimSpace(c.Body)
+		if t == "" {
+			t = "(empty comment)"
 		}
-		/*
-			sc, err := callPredictSingle(ctx, analysisText)
-			if err != nil {
-				sc = MHScore{} // keep going; zeroed score
-			}
-		*/
-		results = append(results, ClassifiedItem{
-			Type:      "post",
-			Subreddit: p.Subreddit,
-			Permalink: p.Permalink,
-			Title:     p.Title,
-			Content:   p.Content, // Keep original content separate
-			CreatedAt: p.CreatedAt,
-			Score:     MHScore{},
-		})
-		// small pacing to be polite
-		time.Sleep(60 * time.Millisecond)
+		queue = append(queue, work{"comment", c.Subreddit, c.Permalink, t, ""})
 	}
 
-	// comments
-	for _, c := range cp.Comments {
-		text := strings.TrimSpace(c.Body)
-		if text == "" {
-			text = "(empty comment)"
+	// Collect texts
+	texts := make([]string, len(queue))
+	for i, w := range queue {
+		texts[i] = w.Text
+	}
+
+	// Single batch call
+	scores, err := callPredict(ctx, texts)
+	if err != nil {
+		// On error, fill zeros but keep order
+		scores = make([]MHScore, len(queue))
+	}
+
+	// Stitch results
+	results := make([]ClassifiedItem, len(queue))
+	for i, w := range queue {
+		results[i] = ClassifiedItem{
+			Type:      w.Type,
+			Subreddit: w.Subreddit,
+			Permalink: w.Permalink,
+			Title:     w.Title,
+			Content:   w.Text,
+			Score:     scores[i],
 		}
-		/*
-			sc, err := callPredictSingle(ctx, text)
-			if err != nil {
-				sc = MHScore{}
-			}
-		*/
-		results = append(results, ClassifiedItem{
-			Type:      "comment",
-			Subreddit: c.Subreddit,
-			Permalink: c.Permalink,
-			Title:     "", // Comments don't have titles
-			Content:   text,
-			CreatedAt: c.CreatedAt,
-			Score:     MHScore{},
-		})
-		time.Sleep(60 * time.Millisecond)
 	}
 
 	return results, nil
@@ -393,7 +436,15 @@ type ClaudePermalinkAssessment struct {
 	Items             []ClaudePermalinkItem `json:"items"`
 }
 
-// We still give Claude context (content + scores), but instruct it to OUTPUT ONLY permalinks.
+func trimForClaude(s string) string {
+	// Rune-safe trim to avoid cutting UTF-8 sequences
+	r := []rune(s)
+	if len(r) <= 500 {
+		return s
+	}
+	return string(r[:500]) + "…"
+}
+
 func SendPermalinksToClaude(ctx context.Context, classified []ClassifiedItem) (*ClaudePermalinkAssessment, error) {
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" {
@@ -404,7 +455,26 @@ func SendPermalinksToClaude(ctx context.Context, classified []ClassifiedItem) (*
 		model = "claude-sonnet-4-20250514"
 	}
 
-	inputJSON, _ := json.Marshal(classified)
+	// Build a trimmed view just for Claude (do not mutate originals)
+	type slimItem struct {
+		Type      string  `json:"type"`
+		Subreddit string  `json:"subreddit"`
+		Permalink string  `json:"permalink"`
+		Content   string  `json:"content"`
+		Score     MHScore `json:"score"`
+	}
+	trimmed := make([]slimItem, 0, len(classified))
+	for _, it := range classified {
+		trimmed = append(trimmed, slimItem{
+			Type:      it.Type,
+			Subreddit: it.Subreddit,
+			Permalink: it.Permalink,
+			Content:   trimForClaude(it.Content), // <-- only pass a substring if it's long
+			Score:     it.Score,
+		})
+	}
+
+	inputJSON, _ := json.Marshal(trimmed)
 
 	system := `You are a mental health analyst. You will receive a list of items with fields:
 - permalink (identifier)
@@ -494,7 +564,7 @@ func OrchestrateAssessment(ctx context.Context, username string, postLimit, comm
 	}
 
 	// 2) Predict sequentially (one request per item)
-	classified, err := PredictSequential(ctx, cp)
+	classified, err := Predict(ctx, cp)
 	if err != nil {
 		return nil, fmt.Errorf("prediction failed: %w", err)
 	}
@@ -518,7 +588,7 @@ func OrchestrateAssessment(ctx context.Context, username string, postLimit, comm
 				Type:           src.Type,
 				Subreddit:      src.Subreddit,
 				Permalink:      src.Permalink,
-				Title:          src.Title,
+				Title:          src.Title, // NEW
 				Content:        src.Content,
 				CreatedAt:      src.CreatedAt,
 				Score:          src.Score,
@@ -532,6 +602,7 @@ func OrchestrateAssessment(ctx context.Context, username string, postLimit, comm
 		ExecutiveSummary:  claudeOut.ExecutiveSummary,
 		ConfidenceScore:   claudeOut.ConfidenceScore,
 		MentalHealthScore: claudeOut.MentalHealthScore,
+		PostsCount:        len(cp.Posts),
 		Items:             items,
 	}, nil
 }
