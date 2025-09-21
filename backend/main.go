@@ -20,6 +20,7 @@ const commentLimit = 1000
 
 type APIProfileResponse struct {
 	Username   string    `json:"username"`
+	Nickname   string    `json:"nickname"`
 	IconURL    string    `json:"icon_url"`
 	TotalKarma int       `json:"total_karma"`
 	Bio        string    `json:"bio"`
@@ -129,6 +130,7 @@ func handleProfile(w http.ResponseWriter, r *http.Request, username string) {
 
 	out := APIProfileResponse{
 		Username:   prof.Username,
+		Nickname:   prof.Nickname,
 		IconURL:    prof.IconURL,
 		TotalKarma: prof.TotalKarma,
 		Bio:        prof.Bio,
