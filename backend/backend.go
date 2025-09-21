@@ -375,6 +375,7 @@ func Predict(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedItem, error
 		Permalink string
 		Text      string
 		Title     string
+		CreatedAt time.Time
 	}
 	var queue []work
 	for _, p := range cp.Posts {
@@ -382,14 +383,14 @@ func Predict(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedItem, error
 		if t == "" {
 			t = "(empty post)"
 		}
-		queue = append(queue, work{"post", p.Subreddit, p.Permalink, t, p.Title})
+		queue = append(queue, work{"post", p.Subreddit, p.Permalink, t, p.Title, p.CreatedAt})
 	}
 	for _, c := range cp.Comments {
 		t := strings.TrimSpace(c.Body)
 		if t == "" {
 			t = "(empty comment)"
 		}
-		queue = append(queue, work{"comment", c.Subreddit, c.Permalink, t, ""})
+		queue = append(queue, work{"comment", c.Subreddit, c.Permalink, t, "", c.CreatedAt})
 	}
 
 	// Collect texts
@@ -416,6 +417,7 @@ func Predict(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedItem, error
 			Permalink: w.Permalink,
 			Title:     w.Title,
 			Content:   w.Text,
+			CreatedAt: w.CreatedAt,
 			Score:     MHScore{},
 		}
 	}
