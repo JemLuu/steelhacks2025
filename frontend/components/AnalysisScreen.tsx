@@ -773,13 +773,6 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                             />
                           </div>
 
-                          {/* Risk Level Markers */}
-                          <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-2 font-medium">
-                            <span>0% Low</span>
-                            <span>40% Moderate</span>
-                            <span>60% High</span>
-                            <span>80% Critical</span>
-                          </div>
                         </div>
                       </div>
                     </div>
