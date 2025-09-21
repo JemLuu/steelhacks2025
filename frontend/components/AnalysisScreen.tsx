@@ -481,12 +481,13 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ duration: 0.6, ease: "easeOut" }}
               >
-                <Card className="p-4 bg-gradient-to-br from-orange-50 to-amber-100 dark:from-orange-900/30 dark:to-amber-900/20 border border-orange-200 dark:border-orange-800 rounded-lg relative overflow-hidden">
+                <Card className="p-4 bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg relative overflow-hidden">
                 {/* Background decoration */}
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-orange-200/30 dark:from-orange-700/20 to-transparent rounded-full -translate-y-10 translate-x-10"></div>
-                <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-amber-200/20 dark:from-amber-700/10 to-transparent rounded-full translate-y-8 -translate-x-8"></div>
+                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-gray-200/30 dark:from-gray-700/20 to-transparent rounded-full -translate-y-10 translate-x-10"></div>
+                <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-gray-200/20 dark:from-gray-700/10 to-transparent rounded-full translate-y-8 -translate-x-8"></div>
 
-                <div className="relative z-10">
+                <div className="relative z-10 space-y-4">
+                  {/* Top section: Picture and Name */}
                   <div className="flex items-start space-x-3">
                     <div className="relative">
                       <ImageWithFallback
@@ -494,33 +495,40 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                         alt="User profile"
                         className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm"
                       />
-                      <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-orange-500 rounded-full border-2 border-white dark:border-gray-800"></div>
+                      <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white dark:border-gray-800"></div>
                     </div>
                     <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-orange-900 dark:text-orange-100">{userProfile.displayName}</h3>
-                      <p className="text-orange-700 dark:text-orange-300">@{userProfile.username}</p>
-                      <div className="bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm rounded-lg p-3 mt-2 border border-white/50 dark:border-gray-700/50">
-                        <p className="text-gray-800 dark:text-gray-200 text-sm font-medium">{userProfile.bio}</p>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{userProfile.displayName}</h3>
+                      <p className="text-gray-700 dark:text-gray-300 -mt-1">@{userProfile.username}</p>
+                      {userProfile.nickname && userProfile.nickname !== userProfile.username && (
+                        <p className="text-gray-600 dark:text-gray-400 text-sm font-medium -mt-1">{userProfile.nickname}</p>
+                      )}
+                    </div>
+                  </div>
 
-                        <div className="flex items-center space-x-4 mt-2 text-sm text-orange-800 dark:text-orange-300">
-                          {userProfile.location && (
-                            <div className="flex items-center space-x-1">
-                              <MapPin className="w-4 h-4" />
-                              <span>{userProfile.location}</span>
-                            </div>
-                          )}
-                          <div className="flex items-center space-x-1">
-                            <Calendar className="w-4 h-4" />
-                            <span>{new Date(userProfile.joinDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span>
-                          </div>
-                        </div>
+                  {/* Bio */}
+                  <div className="space-y-3">
+                    <p className="text-gray-800 dark:text-gray-200 text-sm font-medium">{userProfile.bio}</p>
 
-                        <div className="flex items-center space-x-6 mt-2 text-sm">
-                          <span><strong className="text-orange-900 dark:text-orange-100">{userProfile.karma.toLocaleString()}</strong> <span className="text-orange-700 dark:text-orange-300">Karma</span></span>
-                          <span><strong className="text-orange-900 dark:text-orange-100">{postCount !== null ? postCount.toLocaleString() : '...'}</strong> <span className="text-orange-700 dark:text-orange-300">Posts</span></span>
-                          <span><strong className="text-orange-900 dark:text-orange-100">{commentCount !== null ? commentCount.toLocaleString() : '...'}</strong> <span className="text-orange-700 dark:text-orange-300">Comments</span></span>
+                    {/* Location and Join Date */}
+                    <div className="flex items-center space-x-4 text-sm text-gray-800 dark:text-gray-300">
+                      {userProfile.location && (
+                        <div className="flex items-center space-x-1">
+                          <MapPin className="w-4 h-4" />
+                          <span>{userProfile.location}</span>
                         </div>
+                      )}
+                      <div className="flex items-center space-x-1">
+                        <Calendar className="w-4 h-4" />
+                        <span>{new Date(userProfile.joinDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span>
                       </div>
+                    </div>
+
+                    {/* Stats */}
+                    <div className="flex items-center space-x-6 text-sm">
+                      <span><strong className="text-gray-900 dark:text-gray-100">{userProfile.karma.toLocaleString()}</strong> <span className="text-gray-700 dark:text-gray-300">Karma</span></span>
+                      <span><strong className="text-gray-900 dark:text-gray-100">{postCount !== null ? postCount.toLocaleString() : '...'}</strong> <span className="text-gray-700 dark:text-gray-300">Posts</span></span>
+                      <span><strong className="text-gray-900 dark:text-gray-100">{commentCount !== null ? commentCount.toLocaleString() : '...'}</strong> <span className="text-gray-700 dark:text-gray-300">Comments</span></span>
                     </div>
                   </div>
                 </div>
@@ -734,64 +742,59 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                       </div>
                     </div>
 
-                    {/* Key Metrics Grid */}
-                    <div className="px-6 pb-6">
-                      <div className="grid grid-cols-2 gap-4 mb-4">
-                        {/* Risk Score */}
-                        <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-4 border border-white/60 dark:border-gray-700/60 shadow-sm">
-                          <div className="text-center">
-                            <div className="text-2xl font-black text-purple-900 dark:text-purple-100 mb-1">
-                              {assessment.mental_health_score}%
-                            </div>
-                            <div className="text-xs text-purple-700 dark:text-purple-300 font-semibold">
-                              Risk Score
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Confidence Score */}
-                        <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-4 border border-white/60 dark:border-gray-700/60 shadow-sm">
-                          <div className="text-center">
-                            <div className="text-2xl font-black text-purple-900 dark:text-purple-100 mb-1">
-                              {assessment.confidence_score}%
-                            </div>
-                            <div className="text-xs text-purple-700 dark:text-purple-300 font-semibold">
-                              Confidence
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Visual Risk Indicator */}
+                    {/* Risk Level Visual Indicator */}
+                    <div className="px-6 pb-4">
                       <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl p-4 border border-white/60 dark:border-gray-700/60 shadow-sm">
-                        <div className="text-xs text-purple-700 dark:text-purple-300 font-semibold mb-3 text-center">
-                          Risk Level Visualization
+                        <div className="text-center mb-4">
+                          <div className="text-3xl font-black text-purple-900 dark:text-purple-100">
+                            {assessment.mental_health_score}%
+                          </div>
+                          <div className="text-sm text-purple-700 dark:text-purple-300 font-semibold">
+                            Mental Health Risk Score
+                          </div>
                         </div>
 
+                        {/* Visual Risk Bar */}
                         <div className="relative">
                           <div className="h-3 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
-                            <motion.div
-                              initial={{ width: 0 }}
-                              animate={{ width: `${assessment.mental_health_score}%` }}
-                              transition={{ duration: 1.5, delay: 1, ease: "easeOut" }}
-                              className={`h-full ${
-                                assessment.mental_health_score >= 80 ? 'bg-gradient-to-r from-red-400 to-red-500' :
-                                assessment.mental_health_score >= 60 ? 'bg-gradient-to-r from-orange-400 to-orange-500' :
-                                assessment.mental_health_score >= 40 ? 'bg-gradient-to-r from-yellow-400 to-yellow-500' :
-                                'bg-gradient-to-r from-green-400 to-green-500'
+                            <div
+                              className={`h-full transition-all duration-1000 ease-out ${
+                                assessment.mental_health_score >= 80 ? 'bg-red-500' :
+                                assessment.mental_health_score >= 60 ? 'bg-orange-500' :
+                                assessment.mental_health_score >= 40 ? 'bg-yellow-500' : 'bg-green-500'
                               }`}
+                              style={{ width: `${assessment.mental_health_score}%` }}
                             />
                           </div>
 
                           {/* Risk Level Markers */}
                           <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-2 font-medium">
-                            <span>Low</span>
-                            <span>Moderate</span>
-                            <span>High</span>
-                            <span>Critical</span>
+                            <span>0% Low</span>
+                            <span>40% Moderate</span>
+                            <span>60% High</span>
+                            <span>80% Critical</span>
                           </div>
                         </div>
                       </div>
+                    </div>
+
+                    {/* Metrics Section */}
+                    <div className="px-6 pb-6">
+                        {/* Confidence Score */}
+                        <div className="bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm rounded-lg p-4 border border-white/50 dark:border-gray-700/50 flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                            <span className="text-sm font-semibold text-purple-800 dark:text-purple-300">Analysis Confidence</span>
+                          </div>
+                          <div className="flex items-center space-x-3">
+                            <div className="w-32">
+                              <Progress value={assessment.confidenceScore} className="h-2" />
+                            </div>
+                            <div className="text-xl font-bold text-purple-900 dark:text-purple-100">
+                              {assessment.confidenceScore}%
+                            </div>
+                          </div>
+                        </div>
                     </div>
                   </div>
                 </Card>
