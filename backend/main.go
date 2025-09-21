@@ -24,7 +24,10 @@ type APIProfileResponse struct {
 	TotalKarma int       `json:"total_karma"`
 	Bio        string    `json:"bio"`
 	CakeDay    time.Time `json:"cake_day"`
-	PostCount  int       `json:"post_count"`
+}
+
+type APIPostCountResponse struct {
+	PostCount int `json:"post_count"`
 }
 
 type EnrichedItem struct {
@@ -78,6 +81,16 @@ func main() {
 		handleProfile(w, r, username)
 	})
 
+	// post count endpoint: /api/reddit/postcount/{username}
+	mux.HandleFunc("/api/reddit/postcount/", func(w http.ResponseWriter, r *http.Request) {
+		username := r.URL.Path[len("/api/reddit/postcount/"):]
+		if username == "" {
+			http.Error(w, "username required", http.StatusBadRequest)
+			return
+		}
+		handlePostCount(w, r, username)
+	})
+
 	// assessment endpoint: /api/reddit/assessment/{username}
 	mux.HandleFunc("/api/reddit/assessment/", func(w http.ResponseWriter, r *http.Request) {
 		username := r.URL.Path[len("/api/reddit/assessment/"):]
@@ -103,7 +116,7 @@ func main() {
 // ----- handlers -----
 
 func handleProfile(w http.ResponseWriter, r *http.Request, username string) {
-	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
 	prof, err := GetRedditUserProfile(ctx, username)
@@ -112,15 +125,28 @@ func handleProfile(w http.ResponseWriter, r *http.Request, username string) {
 		return
 	}
 
-	posts, err := GetRedditUserPosts(ctx, username, postLimit, commentLimit)
-
 	out := APIProfileResponse{
 		Username:   prof.Username,
 		IconURL:    prof.IconURL,
 		TotalKarma: prof.TotalKarma,
 		Bio:        prof.Bio,
 		CakeDay:    prof.CakeDay,
-		PostCount:  len(posts.Posts),
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func handlePostCount(w http.ResponseWriter, r *http.Request, username string) {
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	posts, err := GetRedditUserPosts(ctx, username, postLimit, commentLimit)
+	if err != nil {
+		http.Error(w, "failed to fetch posts: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	out := APIPostCountResponse{
+		PostCount: len(posts.Posts),
 	}
 	writeJSON(w, http.StatusOK, out)
 }

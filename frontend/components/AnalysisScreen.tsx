@@ -30,6 +30,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
 
   // API Data State
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [postCount, setPostCount] = useState<number | null>(null);
   const [assessment, setAssessment] = useState<MentalHealthAssessment | null>(null);
   const [aiReport, setAiReport] = useState<AIReport | null>(null);
   const [loading, setLoading] = useState(true);
@@ -89,6 +90,16 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
         throw new Error(userResponse.error?.message || 'Failed to load user profile');
       }
       setUserProfile(userResponse.data!);
+
+      // Step 1.5: Get post count (async, don't block)
+      apiService.getPostCount(targetUsername).then(postCountResponse => {
+        if (!signal?.aborted && postCountResponse.success) {
+          setPostCount(postCountResponse.data!.post_count);
+        }
+      }).catch(err => {
+        console.warn('Post count fetch failed:', err);
+        setPostCount(0); // Default fallback
+      });
 
       // Step 2: Create mental health assessment
       if (signal?.aborted) return;
@@ -224,6 +235,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
 
       // Reset all state and reload with new handle
       setUserProfile(null);
+      setPostCount(null);
       setAssessment(null);
       setAiReport(null);
       setStreamedText('');
@@ -379,8 +391,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
 
                     <div className="flex items-center space-x-6 mt-2 text-sm">
                       <span><strong>{userProfile.karma.toLocaleString()}</strong> <span className="text-gray-600">Karma</span></span>
-                      <span><strong>{userProfile.postKarma.toLocaleString()}</strong> <span className="text-gray-600">Post Karma</span></span>
-                      <span><strong>{userProfile.postsCount.toLocaleString()}</strong> <span className="text-gray-600">Posts</span></span>
+                      <span><strong>{postCount !== null ? postCount.toLocaleString() : '...'}</strong> <span className="text-gray-600">Posts</span></span>
                     </div>
                   </div>
                 </div>
@@ -397,7 +408,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
 
                 <div
                   ref={scrollContainerRef}
-                  className={`h-[440px] overflow-y-auto cursor-pointer ${isAutoScrolling ? 'no-scrollbar' : ''}`}
+                  className={`h-[440px] overflow-y-auto overflow-x-hidden cursor-pointer ${isAutoScrolling ? 'no-scrollbar' : ''}`}
                   onWheel={() => setIsAutoScrolling(false)}
                   onTouchStart={() => setIsAutoScrolling(false)}
                   onMouseDown={() => setIsAutoScrolling(false)}
@@ -430,11 +441,11 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                         <div className="mb-2">
                           <span className="text-xs text-blue-600 font-medium">{post.subreddit}</span>
                           {post.title && (
-                            <h4 className="text-sm font-semibold text-gray-900 mt-1">{post.title}</h4>
+                            <h4 className="text-sm font-semibold text-gray-900 mt-1 break-words">{post.title}</h4>
                           )}
                         </div>
 
-                        <p className="text-gray-700 text-sm mb-3">{post.content}</p>
+                        <p className="text-gray-700 text-sm mb-3 break-words">{post.content}</p>
 
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-4 text-gray-500">

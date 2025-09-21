@@ -188,6 +188,34 @@ export const apiService = {
     }
   },
 
+  // Post Count API
+  async getPostCount(username: string): Promise<APIResponse<{ post_count: number }>> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/reddit/postcount/${username}`);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      return {
+        success: true,
+        data: { post_count: result.post_count }
+      };
+    } catch (error) {
+      console.error('Post count fetch error:', error);
+      return {
+        success: false,
+        error: {
+          code: 'POST_COUNT_FAILED',
+          message: 'Post count could not be retrieved',
+          details: error
+        }
+      };
+    }
+  },
+
   // Mental Health Assessment API
   async createAssessment(request: AnalysisRequest): Promise<APIResponse<any>> {
     try {
