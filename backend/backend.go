@@ -437,6 +437,7 @@ type ClaudePermalinkAssessment struct {
 	ExecutiveSummary  string                `json:"executive_summary"`
 	ConfidenceScore   float64               `json:"confidence_score"`
 	MentalHealthScore float64               `json:"mental_health_score"`
+	KeyPoints         []string              `json:"key_points"`
 	Items             []ClaudePermalinkItem `json:"items"`
 }
 
@@ -491,12 +492,13 @@ Task:
 1) Produce an executive_summary (string) of the user's mental health state.
 2) Produce a confidence_score (0..100).
 3) A mental_health_score (0..100). Note that 0 is good mental health and 100 is bad mental health.
-4) Select at most 5 notable items and RETURN ONLY their permalinks plus:
+4) Produce key_points: an array of 3 concise strings (each <= 8 words) summarizing the most salient signals across the user's posts/comments.
+5) Select at most 5 notable items and RETURN ONLY their permalinks plus:
    - indicators: short bullet-like phrases that are a max of 3 words (strings). These can be positive or negative. These have to make sense in the context of the scores given to the post.
    - relevance_score (0..100)
 
 IMPORTANT:
-- OUTPUT STRICT JSON ONLY, with keys: executive_summary, confidence_score, mental_health_score, items.
+- OUTPUT STRICT JSON ONLY, with keys: executive_summary, confidence_score, mental_health_score, key_points, items.
 - Each item MUST have: permalink, indicators, relevance_score.
 - DO NOT include the raw content in your output.`
 
@@ -606,6 +608,7 @@ func OrchestrateAssessment(ctx context.Context, username string, postLimit, comm
 		ExecutiveSummary:  claudeOut.ExecutiveSummary,
 		ConfidenceScore:   claudeOut.ConfidenceScore,
 		MentalHealthScore: claudeOut.MentalHealthScore,
+		KeyPoints:         claudeOut.KeyPoints,
 		Items:             items,
 	}, nil
 }

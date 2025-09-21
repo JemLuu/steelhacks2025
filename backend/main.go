@@ -27,7 +27,8 @@ type APIProfileResponse struct {
 }
 
 type APIPostCountResponse struct {
-	PostCount int `json:"post_count"`
+	PostCount     int `json:"post_count"`
+	CommentsCount int `json:"comments_count"`
 }
 
 type EnrichedItem struct {
@@ -46,6 +47,7 @@ type APIAssessmentResponse struct {
 	ExecutiveSummary  string         `json:"executive_summary"`
 	ConfidenceScore   float64        `json:"confidence_score"`
 	MentalHealthScore float64        `json:"mental_health_score"`
+	KeyPoints         []string       `json:"key_points"`
 	Items             []EnrichedItem `json:"items"`
 }
 
@@ -146,7 +148,8 @@ func handlePostCount(w http.ResponseWriter, r *http.Request, username string) {
 	}
 
 	out := APIPostCountResponse{
-		PostCount: len(posts.Posts),
+		PostCount:     len(posts.Posts),
+		CommentsCount: len(posts.Comments),
 	}
 	writeJSON(w, http.StatusOK, out)
 }
