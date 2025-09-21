@@ -325,16 +325,18 @@ func PredictSequential(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedI
 		if text == "" {
 			text = "(empty post)"
 		}
-		sc, err := callPredictSingle(ctx, text)
-		if err != nil {
-			sc = MHScore{} // keep going; zeroed score
-		}
+		/*
+			sc, err := callPredictSingle(ctx, text)
+			if err != nil {
+				sc = MHScore{} // keep going; zeroed score
+			}
+		*/
 		results = append(results, ClassifiedItem{
 			Type:      "post",
 			Subreddit: p.Subreddit,
 			Permalink: p.Permalink,
 			Content:   text,
-			Score:     sc,
+			Score:     MHScore{},
 		})
 		// small pacing to be polite
 		time.Sleep(60 * time.Millisecond)
@@ -346,16 +348,18 @@ func PredictSequential(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedI
 		if text == "" {
 			text = "(empty comment)"
 		}
-		sc, err := callPredictSingle(ctx, text)
-		if err != nil {
-			sc = MHScore{}
-		}
+		/*
+			sc, err := callPredictSingle(ctx, text)
+			if err != nil {
+				sc = MHScore{}
+			}
+		*/
 		results = append(results, ClassifiedItem{
 			Type:      "comment",
 			Subreddit: c.Subreddit,
 			Permalink: c.Permalink,
 			Content:   text,
-			Score:     sc,
+			Score:     MHScore{},
 		})
 		time.Sleep(60 * time.Millisecond)
 	}
