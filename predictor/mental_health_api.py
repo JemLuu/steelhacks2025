@@ -1,5 +1,7 @@
 import modal
 import json
+import re
+import torch
 from typing import Dict, List
 
 # Production API setup
@@ -24,59 +26,78 @@ volume = modal.Volume.from_name("gemma-working-finetune", create_if_missing=Fals
     image=image,
     gpu="H100",
     volumes={"/data": volume},
-    container_idle_timeout=300,
-    allow_concurrent_inputs=10,
+    scaledown_window=600,  # Keep containers alive longer to avoid cold starts
+    max_containers=500,  # Allow more concurrent containers
+    min_containers=5,  # Reduced since you can only spin up ~10 total
 )
 class MentalHealthAPI:
     """Production mental health prediction API"""
 
-    def __enter__(self):
+    @modal.enter()
+    def load_model(self):
         import torch
         from transformers import AutoTokenizer, AutoModelForCausalLM
         from peft import PeftModel
 
         print("Loading mental health model...")
 
-        # Load your fine-tuned model
-        self.tokenizer = AutoTokenizer.from_pretrained("/data/gemma-working-final")
+        # Load tokenizer from base model (not fine-tuned path)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            "microsoft/Phi-3-mini-4k-instruct",
+            use_fast=True,
+            padding_side="left"
+        )
+
+        # Load base model
         base_model = AutoModelForCausalLM.from_pretrained(
             "microsoft/Phi-3-mini-4k-instruct",
             torch_dtype=torch.bfloat16,
             device_map="auto",
         )
+
+        # Load fine-tuned adapter
         self.model = PeftModel.from_pretrained(base_model, "/data/gemma-working-final")
         self.model.eval()
 
-        print("Model loaded successfully!")
+        # Compile model for faster inference
+        self.model = torch.compile(self.model)
 
-    @modal.method()
-    def predict(self, text: str) -> Dict[str, float]:
-        """Predict mental health scores"""
-        import torch
-        import json
-        import re
-
-        prompt = f"""<bos><start_of_turn>user
+        # Cache prompt template
+        self.prompt_template = """<bos><start_of_turn>user
 Analyze the following text for mental health indicators and provide scores from 0.0 to 1.0:
 
 {text}<end_of_turn>
 <start_of_turn>model
 """
 
+        print("Model loaded successfully!")
+
+    @modal.method()
+    def predict(self, text: str) -> Dict[str, float]:
+        """Predict mental health scores"""
+
+        prompt = self.prompt_template.format(text=text)
+
         inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1024)
         inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
 
-        with torch.no_grad():
+        with torch.inference_mode():
             outputs = self.model.generate(
                 **inputs,
-                max_new_tokens=256,
+                max_new_tokens=128,
                 temperature=0.1,
-                do_sample=True,
+                do_sample=False,
                 pad_token_id=self.tokenizer.eos_token_id,
             )
 
         response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         generated = response[len(prompt):].strip()
+
+        # Define required fields
+        required_fields = [
+            "depression", "anxiety", "ptsd", "schizophrenia",
+            "bipolar", "eating_disorder", "adhd", "overall_score"
+        ]
 
         # Extract and validate JSON
         try:
@@ -85,11 +106,6 @@ Analyze the following text for mental health indicators and provide scores from 
                 scores = json.loads(json_match.group())
 
                 # Ensure all required fields exist
-                required_fields = [
-                    "depression", "anxiety", "ptsd", "schizophrenia",
-                    "bipolar", "eating_disorder", "adhd", "overall_score"
-                ]
-
                 for field in required_fields:
                     if field not in scores:
                         scores[field] = 0.0
@@ -104,21 +120,33 @@ Analyze the following text for mental health indicators and provide scores from 
 
         except (json.JSONDecodeError, ValueError, TypeError):
             # Return default scores on any error
-            required_fields = [
-                "depression", "anxiety", "ptsd", "schizophrenia",
-                "bipolar", "eating_disorder", "adhd", "overall_score"
-            ]
             return {field: 0.0 for field in required_fields}
 
     @modal.method()
     def predict_batch(self, texts: List[str]) -> List[Dict[str, float]]:
-        """Predict multiple texts at once"""
-        return [self.predict(text) for text in texts]
+        """Predict multiple texts at once, in parallel"""
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
 
+        # For very large batches, chunk them to prevent overwhelming the system
+        chunk_size = 100  # Process in chunks of 20
+        all_results = []
+
+        for i in range(0, len(texts), chunk_size):
+            chunk = texts[i:i + chunk_size]
+            # Fire off all predictions in this chunk
+            futures = [self.predict.spawn(text) for text in chunk]
+            # Gather results for this chunk
+            chunk_results = [f.get() for f in futures]
+            all_results.extend(chunk_results)
+
+        return all_results
+    
 @app.function(
     image=image.pip_install(["fastapi", "uvicorn"]),
-    allow_concurrent_inputs=100,
+    scaledown_window=300,
 )
+@modal.concurrent(max_inputs=200)
 @modal.asgi_app()
 def fastapi_app():
     """FastAPI web service"""
@@ -148,7 +176,7 @@ def fastapi_app():
         adhd: float
         overall_score: float
 
-    # Initialize the model
+    # Initialize the model once globally
     api = MentalHealthAPI()
 
     @web_app.get("/health")
@@ -175,8 +203,8 @@ def fastapi_app():
             if not request.texts:
                 raise HTTPException(status_code=400, detail="Texts list cannot be empty")
 
-            if len(request.texts) > 50:
-                raise HTTPException(status_code=400, detail="Maximum 50 texts per request")
+            if len(request.texts) > 100:
+                raise HTTPException(status_code=400, detail="Maximum 100 texts per request")
 
             scores_list = api.predict_batch.remote(request.texts)
             return {"predictions": scores_list}
