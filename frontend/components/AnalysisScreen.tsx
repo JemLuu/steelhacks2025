@@ -54,7 +54,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
 
   // Animation refs for viewport triggers
   const categoryAnalysisRef = useRef(null);
-  const isCategoryAnalysisInView = useInView(categoryAnalysisRef, { once: true, amount: 0.3 });
+  const isCategoryAnalysisInView = useInView(categoryAnalysisRef, { once: false, amount: 0.1 });
 
   // Loading text cycling
   const [loadingTextIndex, setLoadingTextIndex] = useState(0);
@@ -413,7 +413,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                 <ArrowLeft className="w-4 h-4 text-gray-700 dark:text-gray-300" />
               </Button>
               <div>
-                <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Mindful</h1>
+                <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Beacon</h1>
               </div>
             </div>
 
@@ -672,7 +672,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                   return (
                     <div>
                       {averages.map(({ label, value, percentage }, index) => (
-                        <div key={label} className="space-y-1.5 mb-3">
+                        <div key={`${label}-${percentage}`} className="space-y-1.5 mb-3">
                           <div className="flex justify-between items-center">
                             <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</span>
                             <span className="text-sm font-semibold text-slate-600 dark:text-slate-400">{percentage}%</span>
@@ -681,7 +681,7 @@ export default function AnalysisScreen({ redditHandle, onBack }: AnalysisScreenP
                             <motion.div
                               initial={{ width: 0 }}
                               animate={{ width: `${percentage}%` }}
-                              transition={{ duration: 1.2, delay: 1.2 + (0.1 * index), ease: "easeOut" }}
+                              transition={{ duration: 1, delay: 1.2 + (0.1 * index), ease: "easeOut" }}
                               className={`h-2 rounded-full ${
                                 value < 0.3 ? 'bg-gradient-to-r from-emerald-400 to-emerald-500' :
                                 value < 0.6 ? 'bg-gradient-to-r from-amber-400 to-amber-500' :
