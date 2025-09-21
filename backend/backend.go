@@ -25,6 +25,7 @@ type RedditAbout struct {
 		TotalKarma int     `json:"total_karma"`
 		CreatedUTC float64 `json:"created_utc"`
 		Subreddit  struct {
+			Title             string `json:"title"`
 			PublicDescription string `json:"public_description"` // bio
 		} `json:"subreddit"`
 	} `json:"data"`
@@ -51,6 +52,7 @@ type Listing struct {
 
 type ProfileInformation struct {
 	Username   string
+	Nickname   string
 	IconURL    string
 	TotalKarma int
 	Bio        string
@@ -246,6 +248,7 @@ func GetRedditUserProfile(ctx context.Context, username string) (*ProfileInforma
 
 	return &ProfileInformation{
 		Username:   about.Data.Name,
+		Nickname:   strings.TrimSpace(about.Data.Subreddit.Title),
 		IconURL:    about.Data.IconImg,
 		TotalKarma: about.Data.TotalKarma,
 		Bio:        about.Data.Subreddit.PublicDescription,
