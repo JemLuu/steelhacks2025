@@ -588,7 +588,7 @@ func OrchestrateAssessment(ctx context.Context, username string, postLimit, comm
 				Type:           src.Type,
 				Subreddit:      src.Subreddit,
 				Permalink:      src.Permalink,
-				Title:          src.Title, // NEW
+				Title:          src.Title,
 				Content:        src.Content,
 				CreatedAt:      src.CreatedAt,
 				Score:          src.Score,
