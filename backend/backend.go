@@ -602,7 +602,6 @@ func OrchestrateAssessment(ctx context.Context, username string, postLimit, comm
 		ExecutiveSummary:  claudeOut.ExecutiveSummary,
 		ConfidenceScore:   claudeOut.ConfidenceScore,
 		MentalHealthScore: claudeOut.MentalHealthScore,
-		PostsCount:        len(cp.Posts),
 		Items:             items,
 	}, nil
 }

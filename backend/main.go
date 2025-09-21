@@ -24,6 +24,7 @@ type APIProfileResponse struct {
 	TotalKarma int       `json:"total_karma"`
 	Bio        string    `json:"bio"`
 	CakeDay    time.Time `json:"cake_day"`
+	PostCount  int       `json:"post_count"`
 }
 
 type EnrichedItem struct {
@@ -42,7 +43,6 @@ type APIAssessmentResponse struct {
 	ExecutiveSummary  string         `json:"executive_summary"`
 	ConfidenceScore   float64        `json:"confidence_score"`
 	MentalHealthScore float64        `json:"mental_health_score"`
-	PostsCount        int            `json:"posts_count"`
 	Items             []EnrichedItem `json:"items"`
 }
 
@@ -103,7 +103,7 @@ func main() {
 // ----- handlers -----
 
 func handleProfile(w http.ResponseWriter, r *http.Request, username string) {
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 
 	prof, err := GetRedditUserProfile(ctx, username)
@@ -112,12 +112,15 @@ func handleProfile(w http.ResponseWriter, r *http.Request, username string) {
 		return
 	}
 
+	posts, err := GetRedditUserPosts(ctx, username, postLimit, commentLimit)
+
 	out := APIProfileResponse{
 		Username:   prof.Username,
 		IconURL:    prof.IconURL,
 		TotalKarma: prof.TotalKarma,
 		Bio:        prof.Bio,
 		CakeDay:    prof.CakeDay,
+		PostCount:  len(posts.Posts),
 	}
 	writeJSON(w, http.StatusOK, out)
 }
