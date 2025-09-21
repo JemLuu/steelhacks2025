@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,8 @@ import (
 )
 
 var httpClient = &http.Client{Timeout: 60 * time.Second}
+
+// ---------- Reddit scraping ----------
 
 type RedditAbout struct {
 	Data struct {
@@ -67,7 +70,7 @@ type RedditPost struct {
 	Score       int
 	NumComments int
 	CreatedAt   time.Time
-	Content     string
+	Content     string // NEW: title + "\n\n" + selftext
 }
 
 type RedditComment struct {
@@ -78,8 +81,9 @@ type RedditComment struct {
 	CreatedAt time.Time
 }
 
-// ClaudeInput is what we send to Claude (only posts + comments)
+// ClaudeInput is what we send to Claude (we’ll compose a compact form later)
 type ClaudeInput struct {
+	// not used directly anymore, but kept for compatibility if needed
 	Posts    []RedditPost    `json:"posts"`
 	Comments []RedditComment `json:"comments"`
 }
@@ -108,57 +112,13 @@ type ClaudeResponse struct {
 	} `json:"content"`
 }
 
-type AssessmentItem struct {
-	Type           string   `json:"type"` // "post" | "comment"
-	Subreddit      string   `json:"subreddit"`
-	Permalink      string   `json:"permalink"`
-	Title          string   `json:"title"`
-	Content        string   `json:"content"`         // post title/body or comment body
-	Indicators     []string `json:"indicators"`      // short bullet-style phrases
-	RelevanceScore float64  `json:"relevance_score"` // 0..10
-}
-
-type ParsedAssessment struct {
-	ExecutiveSummary string           `json:"executive_summary"`
-	ConfidenceScore  float64          `json:"confidence_score"`
-	Items            []AssessmentItem `json:"items"`
-}
-
-// Scores returned by the external API (single prediction)
-type MHScore struct {
-	Depression     float64 `json:"depression"`
-	Anxiety        float64 `json:"anxiety"`
-	PTSD           float64 `json:"ptsd"`
-	Schizophrenia  float64 `json:"schizophrenia"`
-	Bipolar        float64 `json:"bipolar"`
-	EatingDisorder float64 `json:"eating_disorder"`
-	ADHD           float64 `json:"adhd"`
-	Overall        float64 `json:"overall_score"`
-}
-
-// Batch response shape from the external API
-type MHBatchResponse struct {
-	Predictions []MHScore `json:"predictions"`
-}
-
-// What we return per item (post or comment) after scoring
-type ClassifiedItem struct {
-	Type      string  `json:"type"` // "post" | "comment"
-	Subreddit string  `json:"subreddit"`
-	Permalink string  `json:"permalink"`
-	Content   string  `json:"content"` // post.Content or comment.Body
-	Score     MHScore `json:"score"`
-}
-
 func doGET(ctx context.Context, url string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	// IMPORTANT: Set a descriptive UA as Reddit requests
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; GoRedditProfile/1.0; +https://example.com)")
 
-	// Simple 429 handling (Retry-After)
 	for attempt := 0; attempt < 3; attempt++ {
 		resp, err := httpClient.Do(req)
 		if err != nil {
@@ -185,15 +145,6 @@ func drainAndClose(rc io.ReadCloser) error {
 	return rc.Close()
 }
 
-// Configure the external API base via env; falls back to your provided URL.
-func externalAPIBase() string {
-	base := os.Getenv("MENTAL_API_BASE")
-	if base == "" {
-		base = "https://jluu196--mental-health-api-fastapi-app.modal.run"
-	}
-	return strings.TrimRight(base, "/")
-}
-
 func GetRedditUserPosts(ctx context.Context, username string, postLimit, commentLimit int) (*CommentsAndPosts, error) {
 	if postLimit <= 0 {
 		postLimit = 10
@@ -206,7 +157,7 @@ func GetRedditUserPosts(ctx context.Context, username string, postLimit, comment
 	submittedURL := fmt.Sprintf("%s/user/%s/submitted.json?limit=%d", base, username, postLimit)
 	commentsURL := fmt.Sprintf("%s/user/%s/comments.json?limit=%d", base, username, commentLimit)
 
-	content := &CommentsAndPosts{
+	out := &CommentsAndPosts{
 		Posts:    []RedditPost{},
 		Comments: []RedditComment{},
 	}
@@ -214,27 +165,28 @@ func GetRedditUserPosts(ctx context.Context, username string, postLimit, comment
 	// Posts
 	resp, err := doGET(ctx, submittedURL)
 	if err != nil {
-		return content, err
+		return out, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
-		return content, fmt.Errorf("submitted.json: %s - %s", resp.Status, string(body))
+		return out, fmt.Errorf("submitted.json: %s - %s", resp.Status, string(body))
 	}
 	var posts Listing
 	if err := json.NewDecoder(resp.Body).Decode(&posts); err != nil {
-		return content, err
+		return out, err
 	}
 	for _, ch := range posts.Data.Children {
 		d := ch.Data
-
-		// Build a readable content string
-		postContent := d.Title
+		content := strings.TrimSpace(d.Title)
 		if s := strings.TrimSpace(d.SelfText); s != "" {
-			postContent = d.Title + "\n\n" + s
+			if content != "" {
+				content += "\n\n" + s
+			} else {
+				content = s
+			}
 		}
-
-		content.Posts = append(content.Posts, RedditPost{
+		out.Posts = append(out.Posts, RedditPost{
 			Subreddit:   d.Subreddit,
 			Title:       d.Title,
 			URL:         d.URL,
@@ -242,27 +194,27 @@ func GetRedditUserPosts(ctx context.Context, username string, postLimit, comment
 			Score:       d.Score,
 			NumComments: d.NumComments,
 			CreatedAt:   time.Unix(int64(d.CreatedUTC), 0).UTC(),
-			Content:     postContent, // ← NEW
+			Content:     content,
 		})
 	}
 
 	// Comments
 	resp, err = doGET(ctx, commentsURL)
 	if err != nil {
-		return content, err
+		return out, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
-		return content, fmt.Errorf("comments.json: %s - %s", resp.Status, string(body))
+		return out, fmt.Errorf("comments.json: %s - %s", resp.Status, string(body))
 	}
 	var comments Listing
 	if err := json.NewDecoder(resp.Body).Decode(&comments); err != nil {
-		return content, err
+		return out, err
 	}
 	for _, ch := range comments.Data.Children {
 		d := ch.Data
-		content.Comments = append(content.Comments, RedditComment{
+		out.Comments = append(out.Comments, RedditComment{
 			Subreddit: d.Subreddit,
 			Body:      d.Body,
 			Permalink: "https://www.reddit.com" + d.Permalink,
@@ -271,14 +223,13 @@ func GetRedditUserPosts(ctx context.Context, username string, postLimit, comment
 		})
 	}
 
-	return content, nil
+	return out, nil
 }
 
 func GetRedditUserProfile(ctx context.Context, username string) (*ProfileInformation, error) {
 	base := "https://www.reddit.com"
 	aboutURL := fmt.Sprintf("%s/user/%s/about.json", base, username)
 
-	// About
 	resp, err := doGET(ctx, aboutURL)
 	if err != nil {
 		return nil, err
@@ -293,130 +244,48 @@ func GetRedditUserProfile(ctx context.Context, username string) (*ProfileInforma
 		return nil, err
 	}
 
-	prof := &ProfileInformation{
+	return &ProfileInformation{
 		Username:   about.Data.Name,
 		IconURL:    about.Data.IconImg,
 		TotalKarma: about.Data.TotalKarma,
 		Bio:        about.Data.Subreddit.PublicDescription,
 		CakeDay:    time.Unix(int64(about.Data.CreatedUTC), 0).UTC(),
-	}
-
-	return prof, nil
+	}, nil
 }
 
-func SendContentToClaude(ctx context.Context, content *CommentsAndPosts) (*ParsedAssessment, error) {
-	apiKey := os.Getenv("ANTHROPIC_API_KEY")
-	if apiKey == "" {
-		return nil, fmt.Errorf("missing ANTHROPIC_API_KEY")
-	}
-	model := os.Getenv("CLAUDE_MODEL")
-	if model == "" {
-		model = "claude-sonnet-4-20250514"
-	}
+// ---------- External mental-health model (single-call per item) ----------
 
-	// Limit payload size
-	const maxPosts = 1000
-	const maxComments = 1000
-	posts := content.Posts
-	if len(posts) > maxPosts {
-		posts = posts[:maxPosts]
+func externalAPIBase() string {
+	base := os.Getenv("MENTAL_API_BASE")
+	if base == "" {
+		base = "https://jluu196--mental-health-api-fastapi-app.modal.run"
 	}
-	comments := content.Comments
-	if len(comments) > maxComments {
-		comments = comments[:maxComments]
-	}
-
-	// Only send posts and comments
-	in := ClaudeInput{
-		Posts:    posts,
-		Comments: comments,
-	}
-	inputJSON, err := json.Marshal(in)
-	if err != nil {
-		return nil, err
-	}
-
-	payload := ClaudeRequest{
-		Model:     model,
-		MaxTokens: 4096,
-		System: `You are a mental health analyst. Return ONLY strict JSON with this schema:
-{
-  "executive_summary": string,
-  "confidence_score": number,  // 0..100
-  "items": [
-    {
-      "type": "post"|"comment",
-      "subreddit": string,
-      "permalink": string,
-	  "title": string,
-      "content": string,
-      "indicators": [string],
-      "relevance_score": number // 0..10
-    }
-  ]
-}
-Limit to at most 5 items and include permalinks. No additional prose.`,
-		Messages: []ClaudeMessage{
-			{
-				Role: "user",
-				Content: []interface{}{
-					TextBlock{
-						Type: "text",
-						Text: "Analyze this Reddit user's posts and comments and return a brief JSON summary with keys: topics, writing_style, activity_patterns, notable_posts (permalinks). Input follows:\n\n" + string(inputJSON),
-					},
-				},
-			},
-		},
-	}
-
-	body, _ := json.Marshal(payload)
-	req, _ := http.NewRequestWithContext(ctx, "POST", "https://api.anthropic.com/v1/messages", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
-
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	respBytes, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("claude api error: %s - %s", resp.Status, string(respBytes))
-	}
-
-	var cResp ClaudeResponse
-	if err := json.Unmarshal(respBytes, &cResp); err != nil {
-		return nil, fmt.Errorf("claude decode error: %w", err)
-	}
-	if len(cResp.Content) == 0 {
-		return nil, fmt.Errorf("claude response had no content")
-	}
-
-	// Parse the model output as strict JSON; if wrapped with prose, trim to outermost braces.
-	raw := cResp.Content[0].Text
-	var parsed ParsedAssessment
-	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
-		if start := strings.IndexByte(raw, '{'); start >= 0 {
-			if end := strings.LastIndexByte(raw, '}'); end > start {
-				if err2 := json.Unmarshal([]byte(raw[start:end+1]), &parsed); err2 == nil {
-					return &parsed, nil
-				}
-			}
-		}
-		return nil, fmt.Errorf("failed to parse Claude JSON: %w; raw: %s", err, raw)
-	}
-
-	return &parsed, nil
+	return strings.TrimRight(base, "/")
 }
 
-// callPredictSingle hits POST /predict for one text
+type MHScore struct {
+	Depression     float64 `json:"depression"`
+	Anxiety        float64 `json:"anxiety"`
+	PTSD           float64 `json:"ptsd"`
+	Schizophrenia  float64 `json:"schizophrenia"`
+	Bipolar        float64 `json:"bipolar"`
+	EatingDisorder float64 `json:"eating_disorder"`
+	ADHD           float64 `json:"adhd"`
+	Overall        float64 `json:"overall_score"`
+}
+
+type ClassifiedItem struct {
+	Type      string  `json:"type"` // "post" | "comment"
+	Subreddit string  `json:"subreddit"`
+	Permalink string  `json:"permalink"`
+	Content   string  `json:"content"`
+	Score     MHScore `json:"score"`
+}
+
 func callPredictSingle(ctx context.Context, text string) (MHScore, error) {
 	payload := struct {
 		Text string `json:"text"`
-	}{Text: text}
+	}{Text: strings.TrimSpace(text)}
 	body, _ := json.Marshal(payload)
 
 	url := externalAPIBase() + "/predict"
@@ -441,35 +310,24 @@ func callPredictSingle(ctx context.Context, text string) (MHScore, error) {
 	return out, nil
 }
 
-// PredictSequential calls the external API once for each post and comment.
 func PredictSequential(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedItem, error) {
 	if cp == nil {
-		return nil, fmt.Errorf("nil CommentsAndPosts")
+		return nil, errors.New("nil CommentsAndPosts")
 	}
+	results := make([]ClassifiedItem, 0, len(cp.Posts)+len(cp.Comments))
 
-	results := []ClassifiedItem{}
-
-	// Loop over posts
+	// posts
 	for _, p := range cp.Posts {
-		text := p.Content
-		if strings.TrimSpace(text) == "" {
-			text = p.Title
+		text := strings.TrimSpace(p.Content)
+		if text == "" {
+			text = strings.TrimSpace(p.Title)
 		}
-		if strings.TrimSpace(text) == "" {
+		if text == "" {
 			text = "(empty post)"
 		}
-
 		sc, err := callPredictSingle(ctx, text)
 		if err != nil {
-			// append with empty score if failed
-			results = append(results, ClassifiedItem{
-				Type:      "post",
-				Subreddit: p.Subreddit,
-				Permalink: p.Permalink,
-				Content:   text,
-				Score:     MHScore{}, // all zeros
-			})
-			continue
+			sc = MHScore{} // keep going; zeroed score
 		}
 		results = append(results, ClassifiedItem{
 			Type:      "post",
@@ -478,28 +336,19 @@ func PredictSequential(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedI
 			Content:   text,
 			Score:     sc,
 		})
-
-		// optional pacing to avoid hammering
-		time.Sleep(100 * time.Millisecond)
+		// small pacing to be polite
+		time.Sleep(60 * time.Millisecond)
 	}
 
-	// Loop over comments
+	// comments
 	for _, c := range cp.Comments {
-		text := c.Body
-		if strings.TrimSpace(text) == "" {
+		text := strings.TrimSpace(c.Body)
+		if text == "" {
 			text = "(empty comment)"
 		}
-
 		sc, err := callPredictSingle(ctx, text)
 		if err != nil {
-			results = append(results, ClassifiedItem{
-				Type:      "comment",
-				Subreddit: c.Subreddit,
-				Permalink: c.Permalink,
-				Content:   text,
-				Score:     MHScore{},
-			})
-			continue
+			sc = MHScore{}
 		}
 		results = append(results, ClassifiedItem{
 			Type:      "comment",
@@ -508,9 +357,164 @@ func PredictSequential(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedI
 			Content:   text,
 			Score:     sc,
 		})
-
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(60 * time.Millisecond)
 	}
 
 	return results, nil
+}
+
+// ---------- Claude: return permalinks only, no post bodies ----------
+
+// What Claude should return (ONLY permalinks + indicators + relevance)
+type ClaudePermalinkItem struct {
+	Permalink      string   `json:"permalink"`
+	Indicators     []string `json:"indicators"`
+	RelevanceScore float64  `json:"relevance_score"`
+}
+type ClaudePermalinkAssessment struct {
+	ExecutiveSummary  string                `json:"executive_summary"`
+	ConfidenceScore   float64               `json:"confidence_score"`
+	MentalHealthScore float64               `json:"mental_health_score"`
+	Items             []ClaudePermalinkItem `json:"items"`
+}
+
+// We still give Claude context (content + scores), but instruct it to OUTPUT ONLY permalinks.
+func SendPermalinksToClaude(ctx context.Context, classified []ClassifiedItem) (*ClaudePermalinkAssessment, error) {
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("missing ANTHROPIC_API_KEY")
+	}
+	model := os.Getenv("CLAUDE_MODEL")
+	if model == "" {
+		model = "claude-sonnet-4-20250514"
+	}
+
+	inputJSON, _ := json.Marshal(classified)
+
+	system := `You are a mental health analyst. You will receive a list of items with fields:
+- permalink (identifier)
+- type ("post"|"comment")
+- subreddit
+- content (text to consider)
+- score (per-category scores + overall_score from an external classifier)
+
+Task:
+1) Produce an executive_summary (string) of the user's mental health state.
+2) Produce a confidence_score (0..100).
+3) A mental health score (0..100).
+4) Select at most 5 notable items and RETURN ONLY their permalinks plus:
+   - indicators: short bullet-like phrases (strings). These can be positive or negative. These have to make sense in the context of the scores given to the post.
+   - relevance_score (0..10)
+
+IMPORTANT:
+- OUTPUT STRICT JSON ONLY, with keys: executive_summary, confidence_score, mental_health_score, items.
+- Each item MUST have: permalink, indicators, relevance_score.
+- DO NOT include the raw content in your output.`
+
+	userPrompt := "Analyze the following items and return ONLY the JSON as specified. Input follows:\n\n" + string(inputJSON)
+
+	payload := ClaudeRequest{
+		Model:     model,
+		MaxTokens: 4096,
+		System:    system,
+		Messages: []ClaudeMessage{
+			{
+				Role: "user",
+				Content: []interface{}{
+					TextBlock{Type: "text", Text: userPrompt},
+				},
+			},
+		},
+	}
+
+	body, _ := json.Marshal(payload)
+	req, _ := http.NewRequestWithContext(ctx, "POST", "https://api.anthropic.com/v1/messages", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	client := &http.Client{Timeout: 120 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	respBytes, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("claude api error: %s - %s", resp.Status, string(respBytes))
+	}
+
+	var cResp ClaudeResponse
+	if err := json.Unmarshal(respBytes, &cResp); err != nil {
+		return nil, fmt.Errorf("claude decode error: %w", err)
+	}
+	if len(cResp.Content) == 0 {
+		return nil, fmt.Errorf("claude response had no content")
+	}
+
+	var parsed ClaudePermalinkAssessment
+	raw := cResp.Content[0].Text
+	// strict parse first, then graceful trim
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		if start := strings.IndexByte(raw, '{'); start >= 0 {
+			if end := strings.LastIndexByte(raw, '}'); end > start {
+				if err2 := json.Unmarshal([]byte(raw[start:end+1]), &parsed); err2 == nil {
+					return &parsed, nil
+				}
+			}
+		}
+		return nil, fmt.Errorf("failed to parse Claude JSON: %w; raw: %s", err, raw)
+	}
+	return &parsed, nil
+}
+
+// ---------- Orchestrator used by /assessment ----------
+
+func OrchestrateAssessment(ctx context.Context, username string, postLimit, commentLimit int) (*APIAssessmentResponse, error) {
+	// 1) Scrape
+	cp, err := GetRedditUserPosts(ctx, username, postLimit, commentLimit)
+	if err != nil {
+		return nil, fmt.Errorf("scrape failed: %w", err)
+	}
+
+	// 2) Predict sequentially (one request per item)
+	classified, err := PredictSequential(ctx, cp)
+	if err != nil {
+		return nil, fmt.Errorf("prediction failed: %w", err)
+	}
+
+	// 3) Feed to Claude; expect only permalinks + indicators + relevance
+	claudeOut, err := SendPermalinksToClaude(ctx, classified)
+	if err != nil {
+		return nil, fmt.Errorf("claude analysis failed: %w", err)
+	}
+
+	// 4) Enrich Claude-selected permalinks with our local content + scores
+	byPermalink := make(map[string]ClassifiedItem, len(classified))
+	for _, it := range classified {
+		byPermalink[it.Permalink] = it
+	}
+
+	items := make([]EnrichedItem, 0, len(claudeOut.Items))
+	for _, it := range claudeOut.Items {
+		if src, ok := byPermalink[it.Permalink]; ok {
+			items = append(items, EnrichedItem{
+				Type:           src.Type,
+				Subreddit:      src.Subreddit,
+				Permalink:      src.Permalink,
+				Content:        src.Content,
+				Score:          src.Score,
+				Indicators:     it.Indicators,
+				RelevanceScore: it.RelevanceScore,
+			})
+		}
+	}
+
+	return &APIAssessmentResponse{
+		ExecutiveSummary:  claudeOut.ExecutiveSummary,
+		ConfidenceScore:   claudeOut.ConfidenceScore,
+		MentalHealthScore: claudeOut.MentalHealthScore,
+		Items:             nil,
+	}, nil
 }
