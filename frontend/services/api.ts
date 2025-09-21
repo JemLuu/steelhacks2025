@@ -68,8 +68,8 @@ function transformAssessmentToDisplayFormat(backendAssessment: MentalHealthAsses
 } {
   // Extract risk level from mental health score (backend sends 0-100)
   const getRiskLevel = (mental_health_score: number): 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL' => {
-    if (mental_health_score >= 90) return 'CRITICAL';
-    if (mental_health_score >= 70) return 'HIGH';
+    if (mental_health_score >= 80) return 'CRITICAL';
+    if (mental_health_score >= 60) return 'HIGH';
     if (mental_health_score >= 40) return 'MODERATE';
     return 'LOW';
   };
