@@ -261,7 +261,7 @@ func GetRedditUserProfile(ctx context.Context, username string) (*ProfileInforma
 func externalAPIBase() string {
 	base := os.Getenv("MENTAL_API_BASE")
 	if base == "" {
-		base = "https://jluu196--mental-health-api-fastapi-app.modal.run"
+		base = "https://jluu196--mental-health-classification-api-fastapi-app.modal.run"
 	}
 	return strings.TrimRight(base, "/")
 }
@@ -402,14 +402,12 @@ func Predict(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedItem, error
 		texts[i] = w.Text
 	}
 
-	/*
-		// Single batch call
-		scores, err := callPredict(ctx, texts)
-		if err != nil {
-			// On error, fill zeros but keep order
-			scores = make([]MHScore, len(queue))
-		}
-	*/
+	// Single batch call
+	scores, err := callPredict(ctx, texts)
+	if err != nil {
+		// On error, fill zeros but keep order
+		scores = make([]MHScore, len(queue))
+	}
 
 	// Stitch results
 	results := make([]ClassifiedItem, len(queue))
@@ -421,7 +419,7 @@ func Predict(ctx context.Context, cp *CommentsAndPosts) ([]ClassifiedItem, error
 			Title:     w.Title,
 			Content:   w.Text,
 			CreatedAt: w.CreatedAt,
-			Score:     MHScore{},
+			Score:     scores[i],
 		}
 	}
 
