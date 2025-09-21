@@ -4,8 +4,8 @@ import re
 import torch
 from typing import Dict, List
 
-# Production API setup
-app = modal.App("mental-health-api")
+# Small model API setup
+app = modal.App("mental-health-small-api")
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -20,7 +20,7 @@ image = (
     ])
 )
 
-volume = modal.Volume.from_name("gemma-working-finetune", create_if_missing=False)
+volume = modal.Volume.from_name("gemma-small-finetune", create_if_missing=False)
 
 @app.cls(
     image=image,
@@ -30,8 +30,8 @@ volume = modal.Volume.from_name("gemma-working-finetune", create_if_missing=Fals
     max_containers=500,  # Allow more concurrent containers
     min_containers=5,  # Reduced since you can only spin up ~10 total
 )
-class MentalHealthAPI:
-    """Production mental health prediction API"""
+class SmallMentalHealthAPI:
+    """Small model mental health prediction API - faster inference"""
 
     @modal.enter()
     def load_model(self):
@@ -39,24 +39,24 @@ class MentalHealthAPI:
         from transformers import AutoTokenizer, AutoModelForCausalLM
         from peft import PeftModel
 
-        print("Loading mental health model...")
+        print("Loading small mental health model...")
 
         # Load tokenizer from base model (not fine-tuned path)
         self.tokenizer = AutoTokenizer.from_pretrained(
-            "microsoft/Phi-3-mini-4k-instruct",
+            "google/gemma-2-2b-it",
             use_fast=True,
             padding_side="left"
         )
 
         # Load base model
         base_model = AutoModelForCausalLM.from_pretrained(
-            "microsoft/Phi-3-mini-4k-instruct",
+            "google/gemma-2-2b-it",
             torch_dtype=torch.bfloat16,
             device_map="auto",
         )
 
         # Load fine-tuned adapter
-        self.model = PeftModel.from_pretrained(base_model, "/data/gemma-working-final")
+        self.model = PeftModel.from_pretrained(base_model, "/data/gemma-small-final")
         self.model.eval()
 
         # Compile model for faster inference
@@ -70,11 +70,11 @@ Analyze the following text for mental health indicators and provide scores from 
 <start_of_turn>model
 """
 
-        print("Model loaded successfully!")
+        print("Small model loaded successfully!")
 
     @modal.method()
     def predict(self, text: str) -> Dict[str, float]:
-        """Predict mental health scores"""
+        """Predict mental health scores using small model"""
 
         prompt = self.prompt_template.format(text=text)
 
@@ -84,7 +84,7 @@ Analyze the following text for mental health indicators and provide scores from 
         with torch.inference_mode():
             outputs = self.model.generate(
                 **inputs,
-                max_new_tokens=128,
+                max_new_tokens=96,  # Smaller model can be more efficient
                 temperature=0.1,
                 do_sample=False,
                 pad_token_id=self.tokenizer.eos_token_id,
@@ -129,7 +129,7 @@ Analyze the following text for mental health indicators and provide scores from 
         from concurrent.futures import ThreadPoolExecutor
 
         # For very large batches, chunk them to prevent overwhelming the system
-        chunk_size = 100  # Process in chunks of 20
+        chunk_size = 100  # Process in chunks
         all_results = []
 
         for i in range(0, len(texts), chunk_size):
@@ -141,7 +141,7 @@ Analyze the following text for mental health indicators and provide scores from 
             all_results.extend(chunk_results)
 
         return all_results
-    
+
 @app.function(
     image=image.pip_install(["fastapi", "uvicorn"]),
     scaledown_window=300,
@@ -149,14 +149,14 @@ Analyze the following text for mental health indicators and provide scores from 
 @modal.concurrent(max_inputs=200)
 @modal.asgi_app()
 def fastapi_app():
-    """FastAPI web service"""
+    """FastAPI web service for small model"""
     from fastapi import FastAPI, HTTPException
     from pydantic import BaseModel
     from typing import List
 
     web_app = FastAPI(
-        title="Mental Health Analysis API",
-        description="AI-powered mental health condition scoring",
+        title="Mental Health Analysis API - Small Model",
+        description="AI-powered mental health condition scoring (fast inference)",
         version="1.0.0"
     )
 
@@ -176,12 +176,12 @@ def fastapi_app():
         adhd: float
         overall_score: float
 
-    # Initialize the model once globally
-    api = MentalHealthAPI()
+    # Initialize the small model once globally
+    api = SmallMentalHealthAPI()
 
     @web_app.get("/health")
     async def health_check():
-        return {"status": "healthy", "model": "phi-3-mental-health"}
+        return {"status": "healthy", "model": "gemma-2-2b-mental-health"}
 
     @web_app.post("/predict", response_model=PredictionResponse)
     async def predict(request: PredictionRequest):
@@ -216,8 +216,8 @@ def fastapi_app():
 
 @app.local_entrypoint()
 def test_api():
-    """Test the API locally"""
-    api = MentalHealthAPI()
+    """Test the small model API locally"""
+    api = SmallMentalHealthAPI()
 
     test_texts = [
         "I feel really anxious and worried all the time",
@@ -226,7 +226,7 @@ def test_api():
         "I feel great today, very motivated and excited!"
     ]
 
-    print("Testing Mental Health API:")
+    print("Testing Small Model Mental Health API:")
     for text in test_texts:
         result = api.predict.remote(text)
         print(f"\nInput: {text}")
